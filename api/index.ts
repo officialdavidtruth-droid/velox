@@ -158,6 +158,19 @@ app.post('/api/workspaces', async (req, res) => {
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Name required' });
+
+  // Enforce workspace limits per plan
+  const { data: sub } = await supabase.from('subscriptions').select('plan_type').eq('user_id', user.id).maybeSingle();
+  const plan = sub?.plan_type || 'starter';
+  const limits: Record<string, number> = { starter: 1, pro: 3, agency: 6 };
+  const limit = limits[plan] ?? 1;
+
+  const { data: members } = await supabase.from('workspace_members').select('workspace_id').eq('user_id', user.id);
+  const count = (members || []).length;
+  if (count >= limit) {
+    return res.status(403).json({ error: `Your ${plan} plan allows up to ${limit} workspace${limit !== 1 ? 's' : ''}. Upgrade to create more.` });
+  }
+
   const { data: ws } = await supabase.from('workspaces')
     .insert({ name, owner_id: user.id, referral_code: genCode() }).select().single();
   if (!ws) return res.status(500).json({ error: 'Failed to create workspace' });
