@@ -670,7 +670,7 @@ export default function App() {
         {activeWorkspace && (
           <main className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0">
             {currentView === 'analytics' && <AnalyticsView workspaceId={activeWorkspace.id} analytics={analyticsData} history={analyticsHistory} onRefresh={loadDashboard}/>}
-            {currentView === 'roas-analytics' && <RoasAnalytics />}
+            {currentView === 'roas-analytics' && <RoasAnalytics workspaceId={activeWorkspace.id}/>}
             {currentView === 'calendar' && <CalendarView workspaceId={activeWorkspace.id} posts={posts} onRefresh={loadDashboard} isOffline={!isOnline}/>}
             {currentView === 'accounts-connector' && <AccountConnector workspaceId={activeWorkspace.id}/>}
             {currentView === 'copywriter' && <CaptionGenerator workspaceId={activeWorkspace.id} onPostScheduled={loadDashboard}/>}

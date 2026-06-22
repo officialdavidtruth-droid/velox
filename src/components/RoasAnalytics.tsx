@@ -1,714 +1,377 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  Coins, 
-  BarChart3, 
-  Target, 
-  DollarSign, 
-  Activity, 
-  RefreshCw, 
-  SlidersHorizontal, 
-  Layers, 
-  Table, 
-  Zap, 
-  CheckCircle2, 
-  Building, 
-  Percent, 
-  Play, 
-  Pause, 
-  ArrowUpRight, 
-  Lock, 
-  Info, 
-  Sparkles,
-  HelpCircle,
-  Key,
-  Shield,
-  ArrowRight
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Coins, TrendingUp, DollarSign, BarChart3, Plus, Trash2,
+  RefreshCw, Info, Save, AlertCircle, ExternalLink
 } from 'lucide-react';
-import { 
-  ResponsiveContainer, 
-  ComposedChart, 
-  Line, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend,
-  AreaChart,
-  Area,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar
+import {
+  ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
+  CartesianGrid, Tooltip, Legend, AreaChart, Area
 } from 'recharts';
+import { api } from '../App';
 
-interface GoogleAdsCampaign {
+interface AdEntry {
   id: string;
-  name: string;
-  status: 'active' | 'paused';
+  platform: string;
+  campaign: string;
   spend: number;
   clicks: number;
   impressions: number;
-  conversionWeight: number; // multiplier for social attribution
+  conversions: number;
+  revenue: number;
 }
 
-interface SocialConversionPoint {
-  platform: 'instagram' | 'facebook' | 'tiktok' | 'linkedin';
-  rawConversionsCount: number;
-  shares: number;
-  engagement: number;
+const PLATFORMS = [
+  { id: 'meta_ads',    name: 'Meta Ads',    emoji: '📘', color: '#1877F2' },
+  { id: 'google_ads',  name: 'Google Ads',  emoji: '🔍', color: '#4285f4' },
+  { id: 'tiktok_ads',  name: 'TikTok Ads',  emoji: '🎵', color: '#fe2c55' },
+  { id: 'linkedin_ads',name: 'LinkedIn Ads',emoji: '💼', color: '#0077b5' },
+];
+
+function fmt(n: number, prefix = '$') {
+  if (n >= 1_000_000) return `${prefix}${(n/1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${prefix}${(n/1_000).toFixed(1)}k`;
+  return `${prefix}${n.toLocaleString()}`;
 }
+function pct(n: number) { return n.toFixed(2) + '%'; }
+function money(n: number) { return '$' + n.toFixed(2); }
 
-export default function RoasAnalytics() {
-  // Sync status
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncLogs, setSyncLogs] = useState<string[]>([]);
-  const [lastSyncTime, setLastSyncTime] = useState<string>('Never synced');
-  const [isSynced, setIsSynced] = useState(false);
+export default function RoasAnalytics({ workspaceId }: { workspaceId?: string }) {
+  const [analytics,    setAnalytics]    = useState<any[]>([]);
+  const [history,      setHistory]      = useState<any[]>([]);
+  const [adEntries,    setAdEntries]    = useState<AdEntry[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [saved,        setSaved]        = useState(false);
+  const [avgOrderValue,setAvgOrderValue]= useState(100);
 
-  // Calibration Controls
-  const [averageBookingValue, setAverageBookingValue] = useState<number>(350); 
-  const [attributionModel, setAttributionModel] = useState<'first-click' | 'last-click' | 'linear' | 'u-shaped'>('linear');
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // Active workspace simulation credentials
-  const [adAccountId, setAdAccountId] = useState('gads-902-114-569');
-  const [devTokenStatus, setDevTokenStatus] = useState<'linked' | 'unlinked'>('linked');
-
-  // Hardcoded simulation core data
-  const [campaigns, setCampaigns] = useState<GoogleAdsCampaign[]>([
-    { id: 'c_luxury_villa', name: '🌴 Oceanfront Luxury Villa Search', status: 'active', spend: 3200, clicks: 4120, impressions: 84000, conversionWeight: 1.25 },
-    { id: 'c_gourmet_tasting', name: '🍷 Bistro Sommelier Night VIP Push', status: 'active', spend: 1850, clicks: 2450, impressions: 41200, conversionWeight: 1.10 },
-    { id: 'c_retreat_couples', name: '🧘 Staycation Couples Retreat', status: 'active', spend: 1400, clicks: 1980, impressions: 32800, conversionWeight: 0.95 },
-    { id: 'c_membership_club', name: '💼 Elite Private Club Enrolment', status: 'paused', spend: 650, clicks: 750, impressions: 14500, conversionWeight: 1.50 }
-  ]);
-
-  const socialBaseConversions: SocialConversionPoint[] = [
-    { platform: 'instagram', rawConversionsCount: 84, shares: 1420, engagement: 2400 },
-    { platform: 'facebook', rawConversionsCount: 96, shares: 980, engagement: 1850 },
-    { platform: 'tiktok', rawConversionsCount: 65, shares: 5400, engagement: 8900 },
-    { platform: 'linkedin', rawConversionsCount: 32, shares: 410, engagement: 1200 }
-  ];
-
-  // Daily correlation projection data
-  const correlationTimeline = [
-    { day: 'Jun 12', adSpend: 150, instagramConv: 4, facebookConv: 6, tiktokConv: 8, linkedinConv: 2 },
-    { day: 'Jun 13', adSpend: 240, instagramConv: 9, facebookConv: 11, tiktokConv: 14, linkedinConv: 3 },
-    { day: 'Jun 14', adSpend: 310, instagramConv: 13, facebookConv: 14, tiktokConv: 19, linkedinConv: 5 },
-    { day: 'Jun 15', adSpend: 380, instagramConv: 18, facebookConv: 15, tiktokConv: 24, linkedinConv: 8 },
-    { day: 'Jun 16', adSpend: 420, instagramConv: 22, facebookConv: 21, tiktokConv: 29, linkedinConv: 10 },
-    { day: 'Jun 17', adSpend: 540, instagramConv: 28, facebookConv: 27, tiktokConv: 38, linkedinConv: 14 },
-    { day: 'Jun 18', adSpend: 620, instagramConv: 35, facebookConv: 34, tiktokConv: 48, linkedinConv: 18 }
-  ];
-
-  // Sync animation simulation
-  const handleTriggerSync = () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    setSyncLogs([]);
-    const steps = [
-      'Establishing SSL connection to Google Ads Developer API v16...',
-      'Validating oauth client certificate fingerprint [SHA-256]...',
-      'Mapping campaigns ledger for Active adAccountId: ' + adAccountId + '...',
-      'Pulling daily impressions and CPC arrays downstream...',
-      'Hooking multi-channel conversions callback payload...',
-      'Generating localized Attribution Vector under ' + attributionModel.toUpperCase() + ' model...',
-      'Database handshake complete. Automated ROAS recalculated successfully!'
-    ];
-
-    let current = 0;
-    const interval = setInterval(() => {
-      if (current < steps.length) {
-        setSyncLogs(prev => [...prev, steps[current]]);
-        current++;
-      } else {
-        clearInterval(interval);
-        setIsSyncing(false);
-        setIsSynced(true);
-        setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-      }
-    }, 700);
-  };
-
-  // Quick Action: Boost Budgets on Google Ads API
-  const handleBoostBid = (id: string) => {
-    setCampaigns(prev => prev.map(c => {
-      if (c.id === id) {
-        // Increase spend simulation
-        return {
-          ...c,
-          spend: Math.round(c.spend * 1.15),
-          clicks: Math.round(c.clicks * 1.10),
-          impressions: Math.round(c.impressions * 1.12),
-          conversionWeight: Number((c.conversionWeight + 0.05).toFixed(2))
-        };
-      }
-      return c;
-    }));
-  };
-
-  // Quick Action: Pause/Resume Campaign
-  const toggleCampaignState = (id: string) => {
-    setCampaigns(prev => prev.map(c => {
-      if (c.id === id) {
-        return { ...c, status: c.status === 'active' ? 'paused' : 'active' };
-      }
-      return c;
-    }));
-  };
-
-  // --- Dynamic Math Computations Engine (Automated ROAS) ---
-  const dynamicCalculations = useMemo(() => {
-    // 1. Google Ads Cumulative Spend Selection
-    const filteredCampaigns = selectedCampaignId === 'all' 
-      ? campaigns 
-      : campaigns.filter(c => c.id === selectedCampaignId);
-
-    const totalAdSpend = filteredCampaigns.reduce((sum, c) => sum + (c.status === 'active' ? c.spend : 0), 0);
-    const totalClicks = filteredCampaigns.reduce((sum, c) => sum + (c.status === 'active' ? c.clicks : 0), 0);
-    const totalImpressions = filteredCampaigns.reduce((sum, c) => sum + (c.status === 'active' ? c.impressions : 0), 0);
-
-    // 2. Attribution Weight Modifiers according to the active model selected
-    let multiplierMap = {
-      instagram: 1.0,
-      facebook: 1.0,
-      tiktok: 1.0,
-      linkedin: 1.0
-    };
-
-    switch (attributionModel) {
-      case 'first-click':
-        // High weight on Instagram and TikTok (typically upper funnel)
-        multiplierMap = { instagram: 1.35, facebook: 0.9, tiktok: 1.45, linkedin: 0.6 };
-        break;
-      case 'last-click':
-        // High weight on Facebook and LinkedIn (typically bottom funnel / high intent conversions)
-        multiplierMap = { instagram: 0.7, facebook: 1.4, tiktok: 0.5, linkedin: 1.55 };
-        break;
-      case 'u-shaped':
-        // Anchored weights on First and Last touch channels, split middle
-        multiplierMap = { instagram: 1.2, facebook: 1.1, tiktok: 1.15, linkedin: 1.25 };
-        break;
-      case 'linear':
-      default:
-        // Evenly balanced
-        multiplierMap = { instagram: 1.0, facebook: 1.0, tiktok: 1.0, linkedin: 1.0 };
-        break;
-    }
-
-    // Apply campaign-specific conversion weight modifier if selectedCampaignId !== 'all'
-    const campaignMod = selectedCampaignId !== 'all' 
-      ? (campaigns.find(c => c.id === selectedCampaignId)?.conversionWeight || 1.0) 
-      : 1.0;
-
-    // Recalibrate social conversions count
-    const attributedPlatformMetrics = socialBaseConversions.map(p => {
-      const baseValue = p.rawConversionsCount;
-      const modelWeight = multiplierMap[p.platform];
-      const finalConversions = Math.round(baseValue * modelWeight * campaignMod);
-      const allocatedRevenue = finalConversions * averageBookingValue;
-      const allocatedSpend = Math.round(totalAdSpend * (finalConversions / 277)); // proportional distribution of spends
-
-      return {
-        ...p,
-        conversions: finalConversions,
-        allocatedRevenue,
-        allocatedSpend,
-        roas: totalAdSpend > 0 ? (allocatedRevenue / Math.max(allocatedSpend, 100)) : 0
-      };
+  // Load real analytics from Supabase
+  useEffect(() => {
+    if (!workspaceId) { setLoading(false); return; }
+    Promise.all([
+      api.get(`/api/analytics?workspaceId=${workspaceId}`),
+      api.get(`/api/analytics/history?workspaceId=${workspaceId}`),
+    ]).then(([a, h]) => {
+      setAnalytics(Array.isArray(a) ? a : []);
+      setHistory(Array.isArray(h) ? h : []);
+      setLoading(false);
     });
 
-    const totalConversions = attributedPlatformMetrics.reduce((sum, p) => sum + p.conversions, 0);
-    const totalRevenue = totalConversions * averageBookingValue;
-    const computedRoas = totalAdSpend > 0 ? (totalRevenue / totalAdSpend) : 0;
-    
-    const overallCpc = totalClicks > 0 ? (totalAdSpend / totalClicks) : 0;
-    const overallCtr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100) : 0;
-    const overallCpa = totalConversions > 0 ? (totalAdSpend / totalConversions) : 0;
+    // Load saved ad entries from localStorage
+    const saved = localStorage.getItem(`velox_ads_${workspaceId}`);
+    if (saved) {
+      try { setAdEntries(JSON.parse(saved)); } catch {}
+    }
+  }, [workspaceId]);
 
-    return {
-      totalAdSpend,
-      totalClicks,
-      totalImpressions,
-      totalConversions,
-      totalRevenue,
-      computedRoas,
-      overallCpc,
-      overallCtr,
-      overallCpa,
-      attributedPlatformMetrics
-    };
-  }, [campaigns, selectedCampaignId, attributionModel, averageBookingValue]);
+  const addEntry = () => {
+    setAdEntries(prev => [...prev, {
+      id: Date.now().toString(),
+      platform: 'meta_ads', campaign: '',
+      spend: 0, clicks: 0, impressions: 0, conversions: 0, revenue: 0
+    }]);
+  };
 
-  // Radars for multi-channel allocation ratios visualization
-  const radarChartData = useMemo(() => {
-    return dynamicCalculations.attributedPlatformMetrics.map(p => ({
-      subject: p.platform.toUpperCase(),
-      Conversions: p.conversions,
-      Revenue: Math.round(p.allocatedRevenue / 1000), // in thousands
-      A: 100
-    }));
-  }, [dynamicCalculations]);
+  const updateEntry = (id: string, key: keyof AdEntry, value: any) => {
+    setAdEntries(prev => prev.map(e => e.id === id ? { ...e, [key]: value } : e));
+  };
+
+  const removeEntry = (id: string) => {
+    setAdEntries(prev => prev.filter(e => e.id !== id));
+  };
+
+  const saveEntries = () => {
+    if (workspaceId) localStorage.setItem(`velox_ads_${workspaceId}`, JSON.stringify(adEntries));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  // Calculations from real entered data
+  const totals = useMemo(() => {
+    const totalSpend       = adEntries.reduce((s, e) => s + (Number(e.spend) || 0), 0);
+    const totalClicks      = adEntries.reduce((s, e) => s + (Number(e.clicks) || 0), 0);
+    const totalImpressions = adEntries.reduce((s, e) => s + (Number(e.impressions) || 0), 0);
+    const totalConversions = adEntries.reduce((s, e) => s + (Number(e.conversions) || 0), 0);
+    const totalRevenue     = adEntries.reduce((s, e) => s + (Number(e.revenue) || (Number(e.conversions) * avgOrderValue)), 0);
+    const roas    = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    const ctr     = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+    const cpc     = totalClicks > 0 ? totalSpend / totalClicks : 0;
+    const cpa     = totalConversions > 0 ? totalSpend / totalConversions : 0;
+    return { totalSpend, totalClicks, totalImpressions, totalConversions, totalRevenue, roas, ctr, cpc, cpa };
+  }, [adEntries, avgOrderValue]);
+
+  // Chart combining social history + ad spend over time
+  const chartData = useMemo(() => {
+    const byDate: Record<string, any> = {};
+    history.forEach(h => {
+      if (!byDate[h.date]) byDate[h.date] = { date: h.date };
+      byDate[h.date][h.platform + '_reach'] = h.reach || 0;
+      byDate[h.date][h.platform + '_engagement'] = h.engagement || 0;
+    });
+    return Object.values(byDate).slice(-14);
+  }, [history]);
+
+  // Per-platform ad breakdown
+  const byPlatform = useMemo(() => {
+    const map: Record<string, { spend: number; revenue: number; conversions: number; clicks: number; impressions: number }> = {};
+    adEntries.forEach(e => {
+      if (!map[e.platform]) map[e.platform] = { spend: 0, revenue: 0, conversions: 0, clicks: 0, impressions: 0 };
+      map[e.platform].spend       += Number(e.spend) || 0;
+      map[e.platform].revenue     += Number(e.revenue) || (Number(e.conversions) * avgOrderValue);
+      map[e.platform].conversions += Number(e.conversions) || 0;
+      map[e.platform].clicks      += Number(e.clicks) || 0;
+      map[e.platform].impressions += Number(e.impressions) || 0;
+    });
+    return map;
+  }, [adEntries, avgOrderValue]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <RefreshCw size={20} className="animate-spin" style={{ color: 'var(--primary)' }}/>
+    </div>
+  );
 
   return (
-    <div id="roas-analytics-view" className="space-y-6">
-      
-      {/* Top Title Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs transition">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 rounded-sm border border-indigo-100 dark:border-indigo-900">
-            <Coins className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider font-display">Automated ROAS Analytics Panel</h2>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Cross-reference verified Google Ads API traffic records against client social media conversion databases.</p>
-          </div>
-        </div>
-
-        {/* Sync Controls action bar */}
-        <div className="flex items-center gap-2.5 font-sans">
-          <div className="hidden sm:flex flex-col text-right text-[10px] text-slate-400">
-            <span>Server Sync API Node: <strong className="text-emerald-555 font-mono">{adAccountId}</strong></span>
-            <span>Last Handshake: <span className="font-mono text-indigo-500 font-bold">{lastSyncTime}</span></span>
-          </div>
-
-          <button
-            onClick={handleTriggerSync}
-            disabled={isSyncing}
-            className={`inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-75 text-white font-extrabold text-xs px-3.5 py-2 rounded-sm shadow-md cursor-pointer transition select-none uppercase tracking-wide`}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? 'Synchronizing...' : 'Sync Ads API'}
-          </button>
+    <div className="space-y-6 max-w-6xl">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="font-bold text-xl mb-1" style={{ color: 'var(--text)' }}>Ads & ROAS Analytics</h1>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>
+            Enter your real ad spend data — ROAS and metrics calculated instantly from your actual numbers
+          </p>
         </div>
       </div>
 
-      {/* Sync Console Drawer Logs inside workspace bounds */}
-      {(isSyncing || syncLogs.length > 0) && (
-        <div className="bg-slate-950 text-slate-300 p-4 rounded-sm border border-slate-850 font-mono text-[10px] space-y-1.5 shadow-lg animate-fade-in">
-          <div className="flex justify-between items-center text-[9px] uppercase font-bold text-slate-500 border-b border-slate-900 pb-1.5 mb-1">
-            <span>GOOGLE_ADS_API_CLIENT_AUTHENTICATOR_SESSION</span>
-            <span className="text-indigo-400 animate-pulse">● BOUNDED</span>
+      {/* Info notice */}
+      <div className="rounded-2xl p-4 flex items-start gap-3" style={{ background: 'var(--info-bg)', border: '1px solid var(--info)' }}>
+        <Info size={15} className="shrink-0 mt-0.5" style={{ color: 'var(--info)' }}/>
+        <div>
+          <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--info)' }}>How this works</p>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-soft)' }}>
+            Enter your ad spend, clicks, impressions, and conversions from your Meta Ads Manager, Google Ads, or TikTok Ads dashboard. VeloxSpace calculates ROAS, CTR, CPC, and CPA from your real numbers. Data is saved to your browser.
+          </p>
+        </div>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          { label: 'ROAS', value: totals.roas > 0 ? totals.roas.toFixed(2) + 'x' : '—', color: totals.roas >= 3 ? 'var(--success)' : totals.roas > 1 ? 'var(--warning)' : 'var(--muted)', sub: totals.roas >= 3 ? '🔥 Profitable' : totals.roas > 1 ? '⚠️ Marginal' : 'Enter data above' },
+          { label: 'Total Ad Spend', value: totals.totalSpend > 0 ? fmt(totals.totalSpend) : '$0', color: 'var(--danger)', sub: `${adEntries.length} campaign${adEntries.length !== 1 ? 's' : ''}` },
+          { label: 'Total Revenue', value: totals.totalRevenue > 0 ? fmt(totals.totalRevenue) : '$0', color: 'var(--success)', sub: `${totals.totalConversions} conversions` },
+          { label: 'CTR', value: totals.ctr > 0 ? pct(totals.ctr) : '—', color: 'var(--primary)', sub: `${(totals.totalClicks).toLocaleString()} clicks` },
+          { label: 'CPA', value: totals.cpa > 0 ? money(totals.cpa) : '—', color: 'var(--warning)', sub: 'Cost per acquisition' },
+        ].map(({ label, value, color, sub }) => (
+          <div key={label} className="glow-card rounded-2xl p-5">
+            <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--muted)' }}>{label}</p>
+            <p className="text-2xl font-black font-mono mb-1" style={{ color }}>{value}</p>
+            <p className="text-[10px]" style={{ color: 'var(--muted)' }}>{sub}</p>
           </div>
-          {syncLogs.map((log, idx) => (
-            <div key={idx} className="flex items-start gap-1.5">
-              <span className="text-emerald-500 font-bold">»</span>
-              <span>{log}</span>
+        ))}
+      </div>
+
+      {/* Average order value */}
+      <div className="glow-card rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <DollarSign size={15} style={{ color: 'var(--primary)' }}/>
+          <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Average order / conversion value</span>
+          <span className="text-xs ml-auto font-mono font-bold" style={{ color: 'var(--primary)' }}>${avgOrderValue}</span>
+        </div>
+        <input type="range" min="10" max="10000" step="10" value={avgOrderValue}
+          onChange={e => setAvgOrderValue(Number(e.target.value))}
+          className="w-full h-2 rounded-full outline-none cursor-pointer"
+          style={{ accentColor: 'var(--primary)' }}/>
+        <div className="flex justify-between text-[10px] mt-1" style={{ color: 'var(--muted)' }}>
+          <span>$10</span>
+          <span>Used when revenue is not entered per campaign</span>
+          <span>$10,000</span>
+        </div>
+      </div>
+
+      {/* Campaign entries */}
+      <div className="glow-card rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: 'var(--text)' }}>Campaign data</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Enter your real numbers from your ads dashboards</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={saveEntries}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-semibold transition-all"
+              style={{ borderColor: saved ? 'var(--success)' : 'var(--border)', color: saved ? 'var(--success)' : 'var(--muted)' }}>
+              <Save size={12}/>{saved ? 'Saved!' : 'Save'}
+            </button>
+            <button onClick={addEntry}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl text-white font-semibold"
+              style={{ background: 'var(--primary)' }}>
+              <Plus size={12}/> Add campaign
+            </button>
+          </div>
+        </div>
+
+        {adEntries.length === 0 ? (
+          <div className="p-10 text-center">
+            <BarChart3 size={28} className="mx-auto mb-3" style={{ color: 'var(--muted)' }}/>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text)' }}>No ad data yet</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>Click "Add campaign" and enter your real numbers from Meta Ads, Google Ads, or TikTok Ads</p>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              {[
+                { name: 'Meta Ads Manager', url: 'https://adsmanager.facebook.com' },
+                { name: 'Google Ads', url: 'https://ads.google.com' },
+                { name: 'TikTok Ads', url: 'https://ads.tiktok.com' },
+              ].map(p => (
+                <a key={p.name} href={p.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-all hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--primary)' }}>
+                  {p.name} <ExternalLink size={10}/>
+                </a>
+              ))}
             </div>
-          ))}
-          {isSyncing && (
-            <div className="flex items-center gap-2 italic text-slate-450 mt-1 pl-4 animate-pulse">
-              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>
-              <span>Processing TLS payload packet buffers...</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+                  {['Platform', 'Campaign name', 'Spend ($)', 'Clicks', 'Impressions', 'Conversions', 'Revenue ($)', 'ROAS', ''].map(h => (
+                    <th key={h} className="text-left px-4 py-3 font-semibold uppercase tracking-wide whitespace-nowrap text-[10px]" style={{ color: 'var(--muted)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {adEntries.map(entry => {
+                  const pl = PLATFORMS.find(p => p.id === entry.platform);
+                  const rev = Number(entry.revenue) || (Number(entry.conversions) * avgOrderValue);
+                  const roas = Number(entry.spend) > 0 ? (rev / Number(entry.spend)).toFixed(2) : '—';
+                  return (
+                    <tr key={entry.id}>
+                      <td className="px-4 py-2">
+                        <select value={entry.platform} onChange={e => updateEntry(entry.id, 'platform', e.target.value)}
+                          className="text-xs rounded-lg px-2 py-1.5 border outline-none"
+                          style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+                          {PLATFORMS.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input value={entry.campaign} onChange={e => updateEntry(entry.id, 'campaign', e.target.value)}
+                          placeholder="Campaign name…"
+                          className="w-36 text-xs rounded-lg px-2 py-1.5 border outline-none"
+                          style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}/>
+                      </td>
+                      {(['spend','clicks','impressions','conversions','revenue'] as const).map(field => (
+                        <td key={field} className="px-4 py-2">
+                          <input type="number" value={entry[field] || ''} onChange={e => updateEntry(entry.id, field, parseFloat(e.target.value) || 0)}
+                            placeholder="0" min="0"
+                            className="w-24 text-xs rounded-lg px-2 py-1.5 border outline-none font-mono"
+                            style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}/>
+                        </td>
+                      ))}
+                      <td className="px-4 py-2">
+                        <span className="font-mono font-bold text-xs"
+                          style={{ color: Number(roas) >= 3 ? 'var(--success)' : Number(roas) > 1 ? 'var(--warning)' : 'var(--muted)' }}>
+                          {roas !== '—' ? roas + 'x' : '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <button onClick={() => removeEntry(entry.id)} className="p-1.5 rounded-lg hover:opacity-70" style={{ color: 'var(--danger)' }}>
+                          <Trash2 size={12}/>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t font-bold" style={{ borderColor: 'var(--border)' }}>
+                <tr>
+                  <td className="px-4 py-3 text-xs font-semibold" style={{ color: 'var(--muted)' }} colSpan={2}>Totals</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--danger)' }}>${totals.totalSpend.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text)' }}>{totals.totalClicks.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text)' }}>{totals.totalImpressions.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text)' }}>{totals.totalConversions}</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--success)' }}>${totals.totalRevenue.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-mono text-xs font-bold" style={{ color: totals.roas >= 3 ? 'var(--success)' : 'var(--warning)' }}>
+                    {totals.roas > 0 ? totals.roas.toFixed(2) + 'x' : '—'}
+                  </td>
+                  <td/>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Per-platform breakdown */}
+      {Object.keys(byPlatform).length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Object.entries(byPlatform).map(([platformId, data]) => {
+            const pl = PLATFORMS.find(p => p.id === platformId);
+            const roas = data.spend > 0 ? data.revenue / data.spend : 0;
+            return (
+              <div key={platformId} className="glow-card rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xl">{pl?.emoji}</span>
+                  <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{pl?.name}</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>Spend</span><span className="font-mono font-semibold" style={{ color: 'var(--danger)' }}>${data.spend.toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>Revenue</span><span className="font-mono font-semibold" style={{ color: 'var(--success)' }}>${data.revenue.toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>ROAS</span><span className="font-mono font-bold" style={{ color: roas >= 3 ? 'var(--success)' : roas > 1 ? 'var(--warning)' : 'var(--danger)' }}>{roas > 0 ? roas.toFixed(2) + 'x' : '—'}</span></div>
+                  <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>Conversions</span><span className="font-mono" style={{ color: 'var(--text)' }}>{data.conversions}</span></div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Real analytics chart from connected accounts */}
+      {analytics.length > 0 && (
+        <div className="glow-card rounded-2xl p-5">
+          <h3 className="font-semibold text-sm mb-4" style={{ color: 'var(--text)' }}>Real social analytics from connected accounts</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+            {analytics.map(a => (
+              <div key={a.platform} className="text-center p-3 rounded-xl" style={{ background: 'var(--surface)' }}>
+                <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: 'var(--muted)' }}>{a.platform}</p>
+                <p className="text-lg font-black font-mono" style={{ color: 'var(--primary)' }}>
+                  {a.followers >= 1000 ? (a.followers/1000).toFixed(1) + 'k' : a.followers}
+                </p>
+                <p className="text-[10px]" style={{ color: 'var(--muted)' }}>followers</p>
+              </div>
+            ))}
+          </div>
+
+          {history.length > 0 && chartData.length > 0 && (
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)"/>
+                  <XAxis dataKey="date" stroke="var(--muted)" fontSize={10}
+                    tickFormatter={v => v ? new Date(v).toLocaleDateString(undefined, { month:'short', day:'numeric' }) : ''}/>
+                  <YAxis stroke="var(--muted)" fontSize={10}/>
+                  <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11 }}/>
+                  {analytics.slice(0, 3).map((a, i) => {
+                    const colors = ['#6366f1','#10b981','#f59e0b'];
+                    return <Area key={a.platform} type="monotone" dataKey={a.platform + '_reach'} stroke={colors[i]} fill={colors[i] + '20'} strokeWidth={2} name={a.platform + ' reach'}/>;
+                  })}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {history.length === 0 && (
+            <div className="py-8 text-center rounded-xl" style={{ background: 'var(--surface)' }}>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>Sync your connected accounts to see analytics history trends</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Numerical Metrics Cards Panel */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        
-        {/* AUTOMATED ROAS PROPORTIONAL DIAL CARD */}
-        <div className="bg-indigo-900 text-white p-5 rounded-sm relative overflow-hidden shadow-md flex flex-col justify-between border border-indigo-950 min-h-[125px]">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl pointer-events-none"></div>
-          <div className="flex items-start justify-between">
-            <span className="text-[10px] uppercase font-black tracking-widest text-indigo-300 font-mono">Automated ROAS</span>
-            <span className="text-[9px] bg-indigo-500/30 border border-indigo-550 text-indigo-200 px-1.5 py-0.5 rounded-sm font-bold font-mono">LIVE CALC</span>
-          </div>
-          <div className="mt-3">
-            <h3 className="text-3xl font-black font-display tracking-tight text-white font-mono">
-              {dynamicCalculations.computedRoas.toFixed(2)}x
-            </h3>
-            <p className="text-[9.5px] text-indigo-200 mt-1 uppercase font-bold tracking-wide">
-              {dynamicCalculations.computedRoas >= 4.0 ? '🔥 Hyper Profitable' : '⭐ Stable Return Level'}
-            </p>
-          </div>
+      {analytics.length === 0 && adEntries.length === 0 && (
+        <div className="glow-card rounded-2xl p-10 text-center">
+          <TrendingUp size={28} className="mx-auto mb-3" style={{ color: 'var(--muted)' }}/>
+          <p className="font-semibold text-sm mb-1" style={{ color: 'var(--text)' }}>No data yet</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>Connect your social accounts and add your ad campaign data to see real ROAS analytics</p>
         </div>
-
-        {/* GOOGLE ADS API TOTAL SPEND */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-350 transition min-h-[125px]">
-          <div className="flex items-start justify-between">
-            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono">Google Ads Spend</span>
-            <Target className="w-4 h-4 text-indigo-600" />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold font-display text-slate-805 dark:text-white font-mono">
-              ${dynamicCalculations.totalAdSpend.toLocaleString()}
-            </h3>
-            <p className="text-[10px] text-slate-400 mt-1">Direct from developer Token</p>
-          </div>
-        </div>
-
-        {/* ALLOCATED SOCIAL REVENUE */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-350 transition min-h-[125px]">
-          <div className="flex items-start justify-between">
-            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono">Synthesised Revenue</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold font-display text-emerald-600 dark:text-emerald-400 font-mono">
-              ${dynamicCalculations.totalRevenue.toLocaleString()}
-            </h3>
-            <p className="text-[10px] text-slate-400 mt-1">Conversions × Avg Value</p>
-          </div>
-        </div>
-
-        {/* ACCUMULATED CONVERSIONS */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-350 transition min-h-[125px]">
-          <div className="flex items-start justify-between">
-            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono">Attributed Bookings</span>
-            <Activity className="w-4 h-4 text-pink-500" />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold font-display text-slate-805 dark:text-white font-mono">
-              {dynamicCalculations.totalConversions}
-            </h3>
-            <p className="text-[10px] text-slate-400 mt-1">Adjusted by attribution model</p>
-          </div>
-        </div>
-
-        {/* COST PER ACQUISITION (CPA) */}
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs flex flex-col justify-between hover:border-slate-350 transition min-h-[125px]">
-          <div className="flex items-start justify-between">
-            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 font-mono">Attributed CPA</span>
-            <Percent className="w-4 h-4 text-rose-500" />
-          </div>
-          <div className="mt-3">
-            <h3 className="text-2xl font-bold font-display text-slate-805 dark:text-white font-mono">
-              ${dynamicCalculations.overallCpa.toFixed(2)}
-            </h3>
-            <p className="text-[10px] text-slate-400 mt-1">Average user onboarding cost</p>
-          </div>
-        </div>
-
-      </div>
-
-      {/* Dual Column workspace: Sandbox Controls & Allocation Analysis */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        
-        {/* Left Column (5 cols): Dynamic Financial Calibration Studio */}
-        <div className="lg:col-span-5 bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs space-y-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-              <SlidersHorizontal className="w-4.5 h-4.5 text-indigo-550" />
-              <div>
-                <h3 className="text-xs uppercase font-black text-slate-850 dark:text-white tracking-wider">Calibration Control Room</h3>
-                <p className="text-[10px] text-slate-400 leading-none mt-0.5">Manipulate conversion values & allocation schemes instantly.</p>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              
-              {/* Slider 1: Average Booking / Conversion value */}
-              <div className="space-y-1.5 font-sans">
-                <div className="flex justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  <span className="flex items-center gap-1.5">
-                    Average Conversion Value 
-                    <Info className="w-3.5 h-3.5 text-slate-400 cursor-help" title="The commercial revenue attributed to a single guest reservation or click action." />
-                  </span>
-                  <span className="text-indigo-650 dark:text-indigo-400 font-mono font-bold">${averageBookingValue}</span>
-                </div>
-                
-                <input 
-                  type="range" 
-                  min="50" 
-                  max="1500" 
-                  step="25" 
-                  value={averageBookingValue} 
-                  onChange={(e) => setAverageBookingValue(Number(e.target.value))}
-                  className="w-full accent-indigo-600 cursor-pointer h-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none"
-                />
-                <div className="flex justify-between text-[8px] text-slate-400 uppercase font-mono font-bold">
-                  <span>$50 (Bistro Menu)</span>
-                  <span>$750 (Suite Booking)</span>
-                  <span>$1500 (Penthouse)</span>
-                </div>
-              </div>
-
-              {/* Selector 2: Conversion Multi-Touch Attribution Model */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Multi-Touch Social Attribution Weights
-                </label>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  
-                  <button
-                    onClick={() => setAttributionModel('linear')}
-                    className={`p-2.5 rounded-sm border text-left transition relative cursor-pointer ${
-                      attributionModel === 'linear' 
-                        ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/20 text-slate-900 dark:text-white font-bold' 
-                        : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 text-slate-500'
-                    }`}
-                  >
-                    <span className="block text-[8px] font-black uppercase text-slate-450 tracking-wider font-mono">Linear (Equal)</span>
-                    <span className="text-[10px]">25% evenly allocated</span>
-                    {attributionModel === 'linear' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>}
-                  </button>
-
-                  <button
-                    onClick={() => setAttributionModel('first-click')}
-                    className={`p-2.5 rounded-sm border text-left transition relative cursor-pointer ${
-                      attributionModel === 'first-click' 
-                        ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/20 text-slate-900 dark:text-white font-bold' 
-                        : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 text-slate-500'
-                    }`}
-                  >
-                    <span className="block text-[8px] font-black uppercase text-slate-450 tracking-wider font-mono">First Click</span>
-                    <span className="text-[10px]">Attributed upper funnel</span>
-                    {attributionModel === 'first-click' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>}
-                  </button>
-
-                  <button
-                    onClick={() => setAttributionModel('last-click')}
-                    className={`p-2.5 rounded-sm border text-left transition relative cursor-pointer ${
-                      attributionModel === 'last-click' 
-                        ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/20 text-slate-900 dark:text-white font-bold' 
-                        : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 text-slate-500'
-                    }`}
-                  >
-                    <span className="block text-[8px] font-black uppercase text-slate-450 tracking-wider font-mono">Last Touch</span>
-                    <span className="text-[10px]">Attributed bottom conversion</span>
-                    {attributionModel === 'last-click' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>}
-                  </button>
-
-                  <button
-                    onClick={() => setAttributionModel('u-shaped')}
-                    className={`p-2.5 rounded-sm border text-left transition relative cursor-pointer ${
-                      attributionModel === 'u-shaped' 
-                        ? 'border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/20 text-slate-900 dark:text-white font-bold' 
-                        : 'border-slate-150 dark:border-slate-800 hover:bg-slate-50 text-slate-500'
-                    }`}
-                  >
-                    <span className="block text-[8px] font-black uppercase text-slate-450 tracking-wider font-mono">U-Shaped (40-20-40)</span>
-                    <span className="text-[10px]">Initial & closing biased</span>
-                    {attributionModel === 'u-shaped' && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>}
-                  </button>
-
-                </div>
-              </div>
-
-              {/* Selector 3: Active Campaign Focus Filter */}
-              <div className="space-y-1.5 font-sans">
-                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                  Target Google Ads Campaign Focus
-                </label>
-                <select
-                  value={selectedCampaignId}
-                  onChange={(e) => { setSelectedCampaignId(e.target.value); }}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-white p-2.5 text-xs outline-none focus:border-indigo-500 rounded-sm"
-                >
-                  <option value="all">📊 All Live Active Google Ads Campaigns</option>
-                  {campaigns.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} {c.status === 'paused' ? '(Paused)' : ''}</option>
-                  ))}
-                </select>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Secure Trust Stamp */}
-          <div className="bg-slate-50 dark:bg-slate-950/50 p-3.5 rounded-sm border border-slate-100 dark:border-slate-850/80 mt-6 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-slate-900 dark:text-white text-[10px] font-bold font-mono">
-              <Shield className="w-4 h-4 text-indigo-600 shrink-0" />
-              <span>TLS SECURITIES OK</span>
-            </div>
-            <p className="text-[10px] text-slate-400 leading-normal font-sans">
-              Google Ads OAuth scope relies on isolated TLS 1.3 containers. Disconnecting active tokens sweeps localized buffers instantly.
-            </p>
-          </div>
-
-        </div>
-
-        {/* Right Column (7 cols): Relationship correlation chart & allocation breakdown */}
-        <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-5 rounded-sm border border-slate-205 dark:border-slate-800 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4.5 h-4.5 text-indigo-550" />
-                <div>
-                  <h3 className="text-xs uppercase font-black text-slate-810 dark:text-white tracking-wider">Correlation Matrix & Spatial Trends</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5 font-sans">Google Ads daily budget influence against organic social networks conversions.</p>
-                </div>
-              </div>
-
-              <span className="text-[9px] uppercase font-bold text-slate-400 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 px-2.5 py-1 rounded-sm font-mono">
-                Temporal Line
-              </span>
-            </div>
-
-            {/* Recharts Temporal correlation plotting */}
-            <div className="h-60 mt-4 select-text">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={correlationTimeline} margin={{ top: 10, right: -10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.15} />
-                  <XAxis dataKey="day" stroke="#94a3b8" fontSize={9} fontStyle="italic" />
-                  <YAxis yAxisId="left" stroke="#4f46e5" fontSize={9} />
-                  <YAxis yAxisId="right" orientation="right" stroke="#e11d48" fontSize={9} />
-                  
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', fontSize: '11px', color: '#fff' }} 
-                  />
-                  <Legend wrapperStyle={{ fontSize: '9px', fontWeight: 'bold' }} />
-                  
-                  {/* Left Axis: Google Ads Spend */}
-                  <Bar yAxisId="left" dataKey="adSpend" fill="#4f46e5" fillOpacity={0.25} stroke="#4f46e5" strokeWidth={1} name="Google Ads Spend ($)" radius={[1, 1, 0, 0]} />
-                  
-                  {/* Right Axis: Social platform-attributed conversions */}
-                  <Line yAxisId="right" type="monotone" dataKey="instagramConv" stroke="#f43f5e" strokeWidth={2.5} name="Instagram Conversions" dot={{ r: 2 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="facebookConv" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="4 4" name="Facebook Conversions" dot={{ r: 1 }} />
-                  <Line yAxisId="right" type="monotone" dataKey="tiktokConv" stroke="#8b5cf6" strokeWidth={2} name="TikTok Conversions" dot={{ r: 2 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-2 pt-4 border-t border-slate-100 dark:border-slate-850/80 text-center font-sans">
-            <div>
-              <span className="block text-[8px] uppercase text-slate-400 font-bold">Overall CTR</span>
-              <span className="block text-xs font-mono font-black text-slate-800 dark:text-white mt-0.5">{dynamicCalculations.overallCtr.toFixed(2)}%</span>
-            </div>
-            <div className="border-l border-slate-100 dark:border-slate-800">
-              <span className="block text-[8px] uppercase text-slate-400 font-bold">Average CPC</span>
-              <span className="block text-xs font-mono font-black text-emerald-600 mt-0.5">${dynamicCalculations.overallCpc.toFixed(2)}</span>
-            </div>
-            <div className="border-l border-slate-100 dark:border-slate-800">
-              <span className="block text-[8px] uppercase text-slate-400 font-bold">Allocated Conversions</span>
-              <span className="block text-xs font-mono font-black text-slate-800 dark:text-white mt-0.5">{dynamicCalculations.totalConversions}</span>
-            </div>
-            <div className="border-l border-slate-100 dark:border-slate-800">
-              <span className="block text-[8px] uppercase text-slate-400 font-bold">Simulated Multiplier</span>
-              <span className="block text-xs font-mono font-black text-indigo-550 mt-0.5">{attributionModel.toUpperCase()}</span>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* Campaign Performance matrices table ledger */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-sm shadow-xs p-5">
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
-          <div className="flex items-center gap-2 flex-1">
-            <Table className="w-4.5 h-4.5 text-indigo-550" />
-            <div>
-              <h3 className="text-xs uppercase font-black text-slate-850 dark:text-white tracking-wider">Campaign Performance Matrix Ledger</h3>
-              <p className="text-[10px] text-slate-405 dark:text-slate-500 mt-0.5">Real-time budget allocation adjustments, conversions rates, and targeted automated ROAS projections.</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-[10px] bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-sm">
-            <span className="text-slate-500 uppercase font-black font-mono">Attribution Weight Bias:</span>
-            <span className="text-indigo-600 font-extrabold uppercase font-mono">{attributionModel} Mode</span>
-          </div>
-        </div>
-
-        {/* Dynamic Table Layout */}
-        <div className="overflow-x-auto select-all pr-1">
-          <table className="w-full text-left font-sans text-xs whitespace-nowrap">
-            <thead>
-              <tr className="border-b border-slate-150 dark:border-slate-800/80 text-[10px] uppercase text-slate-400 font-black tracking-wider">
-                <th className="py-2.5">Campaign Details</th>
-                <th className="py-2.5">Platform</th>
-                <th className="py-2.5 text-right">Ad Spend ($)</th>
-                <th className="py-2.5 text-right">Traffic Clicks</th>
-                <th className="py-2.5 text-right">Impressions</th>
-                <th className="py-2.5 text-center">CTR (%)</th>
-                <th className="py-2.5 text-right">CPC ($)</th>
-                <th className="py-2.5 text-right">Conversions</th>
-                <th className="py-2.5 text-right">Allocated Revenues ($)</th>
-                <th className="py-2.5 text-center">Calculated ROAS</th>
-                <th className="py-2.5 text-center">Remote Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-              {campaigns.map(c => {
-                const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : '0';
-                const cpc = c.clicks > 0 ? (c.spend / c.clicks).toFixed(2) : '0';
-                
-                // Conversions modeling for single rows
-                let ratio = 0.25;
-                if (c.id === 'c_luxury_villa') ratio = 0.35;
-                if (c.id === 'c_gourmet_tasting') ratio = 0.28;
-                if (c.id === 'c_retreat_couples') ratio = 0.22;
-                if (c.id === 'c_membership_club') ratio = 0.15;
-                
-                const conversions = c.status === 'active' 
-                  ? Math.round(dynamicCalculations.totalConversions * ratio) 
-                  : 0;
-                const allocationRev = conversions * averageBookingValue;
-                const roas = c.status === 'active' && c.spend > 0 
-                  ? (allocationRev / c.spend).toFixed(2) 
-                  : '0.00';
-
-                return (
-                  <tr 
-                    key={c.id} 
-                    className={`hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition ${
-                      c.status === 'paused' ? 'opacity-50' : ''
-                    }`}
-                  >
-                    <td className="py-3 font-semibold text-slate-900 dark:text-white">
-                      <div>
-                        <span className="block">{c.name}</span>
-                        <span className="text-[9px] font-mono text-slate-400 font-semibold">{c.id.toUpperCase()}</span>
-                      </div>
-                    </td>
-                    <td className="py-3">
-                      <span className="text-[10px] font-bold uppercase text-slate-500 font-mono">Google Ads Platform</span>
-                    </td>
-                    <td className="py-3 text-right font-mono font-bold">${c.spend.toLocaleString()}</td>
-                    <td className="py-3 text-right font-mono">{c.clicks.toLocaleString()}</td>
-                    <td className="py-3 text-right font-mono text-slate-405">{c.impressions.toLocaleString()}</td>
-                    <td className="py-3 text-center font-mono font-bold text-slate-600 dark:text-slate-400">{ctr}%</td>
-                    <td className="py-3 text-right font-mono hover:underline text-emerald-600">${cpc}</td>
-                    <td className="py-3 text-right font-mono font-black text-slate-805 dark:text-white">{conversions}</td>
-                    <td className="py-3 text-right font-mono font-semibold text-emerald-650">${allocationRev.toLocaleString()}</td>
-                    <td className="py-3 text-center">
-                      <span className={`px-2 py-0.5 rounded-sm font-mono text-[10px] font-black ${
-                        Number(roas) >= 4.0 
-                          ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
-                          : Number(roas) > 1.5 
-                            ? 'bg-indigo-500/10 text-indigo-500 border border-indigo-500/20' 
-                            : 'bg-slate-100 border-slate-200 text-slate-500'
-                      }`}>
-                        {roas}x
-                      </span>
-                    </td>
-                    <td className="py-3 text-center">
-                      <div className="inline-flex items-center gap-1.5 font-sans">
-                        <button
-                          onClick={() => handleBoostBid(c.id)}
-                          disabled={c.status === 'paused'}
-                          className="px-2 py-1 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 disabled:opacity-40 text-[9px] font-black rounded-xs transition uppercase tracking-wide cursor-pointer flex items-center gap-1"
-                        >
-                          <Zap className="w-2.5 h-2.5 text-indigo-600 animate-pulse" /> +15% Bid
-                        </button>
-                        <button
-                          onClick={() => toggleCampaignState(c.id)}
-                          className={`px-2 py-1 border text-[9px] font-black rounded-xs transition uppercase cursor-pointer ${
-                            c.status === 'active' 
-                              ? 'border-slate-205 dark:border-slate-800 hover:bg-slate-100 text-slate-600 dark:text-slate-400' 
-                              : 'bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100'
-                          }`}
-                        >
-                          {c.status === 'active' ? 'Pause' : 'Activate'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-
+      )}
     </div>
   );
 }
