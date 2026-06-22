@@ -360,7 +360,7 @@ export default function PropertyManager({ workspaceId, onAddPostToCalendar, isOf
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Lusso Oceanfront Penthouse"
+                  placeholder="e.g. Premium Client Property"
                   value={propName}
                   onChange={(e) => setPropName(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 rounded-sm bg-slate-50 focus:bg-white focus:border-slate-400 transition"

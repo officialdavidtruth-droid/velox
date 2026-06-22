@@ -480,7 +480,7 @@ export default function AccountConnector({ workspaceId }: AccountConnectorProps)
             <Shield className="w-5 h-5 text-indigo-500 mt-0.5 shrink-0" />
             <div className="space-y-1 text-slate-500 dark:text-slate-400">
               <h4 className="text-[10px] uppercase font-mono tracking-widest font-extrabold text-indigo-650 dark:text-indigo-400">
-                Lusso Sync Security Shield
+                VeloxSpace Security Shield
               </h4>
               <p className="text-[10px] leading-normal font-sans">
                 Our application does not store your direct login passwords. Platform handshakes occur via TLS-isolated OAuth 2.0 PKCE protocol tunnels. Disconnecting any channel immediately flushes its token buffers from all our container nodes.

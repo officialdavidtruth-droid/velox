@@ -314,7 +314,7 @@ export default function MarketingSandbox() {
                             className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-slate-800" 
                           />
                           <div>
-                            <span className="text-[10px] font-extrabold text-slate-900 dark:text-white block leading-tight">lusso_resorts</span>
+                            <span className="text-[10px] font-extrabold text-slate-900 dark:text-white block leading-tight">velox_agency</span>
                             <span className="text-[8px] text-slate-400 leading-none">Sponsored • Instagram</span>
                           </div>
                         </div>
@@ -333,7 +333,7 @@ export default function MarketingSandbox() {
                       {/* Caption text */}
                       <div className="space-y-1 font-sans text-[10px]">
                         <p className="text-slate-800 dark:text-slate-350 leading-relaxed text-left shrink-0 line-clamp-3">
-                          <strong className="text-slate-900 dark:text-white mr-1">lusso_resorts</strong>
+                          <strong className="text-slate-900 dark:text-white mr-1">velox_agency</strong>
                           {customCaption}
                         </p>
                         <span className="text-[8px] text-indigo-500 font-bold block">#luxuryresort #vacation #travel #brandpilot</span>
@@ -361,7 +361,7 @@ export default function MarketingSandbox() {
                           className="w-6 h-6 rounded-full object-cover border border-slate-800" 
                         />
                         <div>
-                          <span className="text-[10px] font-extrabold text-white block leading-tight">lusso_vacations</span>
+                          <span className="text-[10px] font-extrabold text-white block leading-tight">velox_brands</span>
                           <span className="text-[8px] text-slate-400 leading-none">TikTok Creator</span>
                         </div>
                       </div>
@@ -383,10 +383,10 @@ export default function MarketingSandbox() {
                       {/* Caption text */}
                       <div className="space-y-1 text-left font-sans text-[10px]">
                         <p className="text-slate-300 leading-normal line-clamp-2">
-                          <strong className="text-white mr-1">@lusso_vacations</strong>
+                          <strong className="text-white mr-1">@velox_brands</strong>
                           {customCaption}
                         </p>
-                        <span className="text-[8.5px] text-cyan-400 font-mono">♬ Original Sound - Lusso Vacations Audio</span>
+                        <span className="text-[8.5px] text-cyan-400 font-mono">♬ Original Sound - VeloxSpace Audio</span>
                       </div>
 
                       {/* Stats */}
@@ -408,7 +408,7 @@ export default function MarketingSandbox() {
                             className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-slate-800" 
                           />
                           <div>
-                            <span className="text-[9.5px] font-extrabold text-slate-900 dark:text-white block leading-tight">Lusso Hospitality Corp</span>
+                            <span className="text-[9.5px] font-extrabold text-slate-900 dark:text-white block leading-tight">VeloxSpace Agency</span>
                             <span className="text-[7.5px] text-slate-400 leading-none">12,504 followers • Shared Publicly</span>
                           </div>
                         </div>
@@ -429,7 +429,7 @@ export default function MarketingSandbox() {
                         />
                         <div className="p-2 text-left bg-slate-100/50 dark:bg-slate-950">
                           <span className="text-[9px] font-bold text-slate-900 dark:text-white block">Official Booking Portals</span>
-                          <span className="text-[8px] text-slate-400 block leading-none">lusso.org/explore-sanctuaries</span>
+                          <span className="text-[8px] text-slate-400 block leading-none">veloxspace.app</span>
                         </div>
                       </div>
 

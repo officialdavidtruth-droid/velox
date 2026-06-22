@@ -1,10 +1,15 @@
-const CACHE = 'veloxspace-v1';
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', () => self.clients.claim());
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  if (!e.request.url.startsWith('http')) return;
-  if (e.request.url.includes('/api/')) return;
-  if (e.request.url.includes('supabase.co')) return;
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+// VeloxSpace Service Worker - minimal, no fetch interception
+const CACHE = 'veloxspace-v2';
+
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
+
+self.addEventListener('activate', () => {
+  self.clients.claim();
+  // Clear old caches
+  caches.keys().then(keys => keys.forEach(k => k !== CACHE && caches.delete(k)));
+});
+
+// Do NOT intercept fetches - let browser handle everything normally
+// This prevents the sw.js TypeError that was blocking API calls

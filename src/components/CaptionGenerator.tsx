@@ -124,7 +124,7 @@ export default function CaptionGenerator({ workspaceId, onPostScheduled }: Capti
               rows={4}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g. Introducing our new infinity swimming pool at Lusso Spa Resort showing gorgeous sunset ocean horizons. Highlight luxury, peace and romantic getaways."
+              placeholder="e.g. Share your latest product launch or campaign highlight. What makes it special?"
               className="w-full px-3 py-2 border border-slate-200 rounded-sm outline-none bg-slate-50 focus:bg-white focus:border-slate-400 transition font-sans text-xs"
             ></textarea>
           </div>

@@ -17,22 +17,33 @@ import PropertyManager from './components/PropertyManager';
 import AccountConnector from './components/AccountConnector';
 import RoasAnalytics from './components/RoasAnalytics';
 
-// ── API helper with error handling ─────────────────────────────────────────
+// ── API helper with timeout + error handling ────────────────────────────────
+const TIMEOUT_MS = 12000;
+function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+}
+
 export const api = {
   _headers: () => {
     const token = localStorage.getItem('velox_token');
     return { 'Content-Type': 'application/json', ...(token ? { 'x-session-token': token } : {}) };
   },
   get: async (url: string) => {
-    const r = await fetch(url, { headers: api._headers() });
-    return r.json();
+    try {
+      const r = await fetchWithTimeout(url, { headers: api._headers() });
+      return r.json();
+    } catch { return null; }
   },
   post: async (url: string, body?: any) => {
     try {
-      const r = await fetch(url, { method: 'POST', headers: api._headers(), body: body ? JSON.stringify(body) : undefined });
-      return r.json();
+      const r = await fetchWithTimeout(url, { method: 'POST', headers: api._headers(), body: body ? JSON.stringify(body) : undefined });
+      const text = await r.text();
+      try { return JSON.parse(text); } catch { return { error: `Server error (${r.status}). Check Vercel env vars and run migration SQL in Supabase.` }; }
     } catch (e: any) {
-      return { error: 'Network error — please check your connection.' };
+      if (e.name === 'AbortError') return { error: 'Request timed out. The server may be starting up — please try again.' };
+      return { error: 'Network error. Please check your connection.' };
     }
   },
   put: async (url: string, body?: any) => {
@@ -139,33 +150,43 @@ export default function App() {
     e.preventDefault();
     setAuthMsg({ text: '', type: '' });
     setAuthSubmitting(true);
-    const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const payload = authMode === 'login' ? { email: authEmail } : { email: authEmail, name: authName };
-    const data = await api.post(endpoint, payload);
-    setAuthSubmitting(false);
-    if (data?.token) {
-      localStorage.setItem('velox_token', data.token);
-      setUser(data.user); setAuthModal(false);
-      setAuthEmail(''); setAuthName('');
-      setAuthLoading(true);
-      await loadDashboard();
-    } else {
-      setAuthMsg({ text: data?.error || 'Something went wrong. Please try again.', type: 'error' });
+    try {
+      const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const payload = authMode === 'login' ? { email: authEmail } : { email: authEmail, name: authName };
+      const data = await api.post(endpoint, payload);
+      if (data?.token) {
+        localStorage.setItem('velox_token', data.token);
+        setUser(data.user); setAuthModal(false);
+        setAuthEmail(''); setAuthName('');
+        setAuthLoading(true);
+        await loadDashboard();
+      } else {
+        setAuthMsg({ text: data?.error || 'Something went wrong. Please try again.', type: 'error' });
+      }
+    } catch (err: any) {
+      setAuthMsg({ text: err.message || 'Unexpected error. Please try again.', type: 'error' });
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
   const handleDemo = async () => {
     setAuthSubmitting(true);
-    const data = await api.post('/api/auth/demo');
-    setAuthSubmitting(false);
-    if (data?.token) {
-      localStorage.setItem('velox_token', data.token);
-      setUser(data.user); setSubscription(data.subscription); setCredits(data.credit);
-      setAuthModal(false);
-      setAuthLoading(true);
-      await loadDashboard();
-    } else {
-      setAuthMsg({ text: 'Demo failed — please try again.', type: 'error' });
+    try {
+      const data = await api.post('/api/auth/demo');
+      if (data?.token) {
+        localStorage.setItem('velox_token', data.token);
+        setUser(data.user); setSubscription(data.subscription); setCredits(data.credit);
+        setAuthModal(false);
+        setAuthLoading(true);
+        await loadDashboard();
+      } else {
+        setAuthMsg({ text: data?.error || 'Demo failed — please try again.', type: 'error' });
+      }
+    } catch (err: any) {
+      setAuthMsg({ text: err.message || 'Demo failed.', type: 'error' });
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
