@@ -86,8 +86,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authModal, setAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authEmail, setAuthEmail] = useState('');
-  const [authName, setAuthName] = useState('');
+  const [authEmail,    setAuthEmail]    = useState('');
+  const [authName,     setAuthName]     = useState('');
+  const [authPassword, setAuthPassword] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authMsg, setAuthMsg] = useState({ text: '', type: '' });
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as any) || 'dark');
