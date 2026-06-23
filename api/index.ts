@@ -1,5 +1,5 @@
 /**
- * VeloxSpace — Express Server (REAL DATA ONLY)
+ * VeloxSpace ? Express Server (REAL DATA ONLY)
  * All analytics, AI, and lead data comes from real APIs.
  * No mock data, no fake numbers, no fallbacks.
  */
@@ -12,7 +12,7 @@ import type { Request, Response } from 'express';
 const app = express();
 app.use(express.json());
 
-// ── Supabase ───────────────────────────────────────────────────────────────
+// ?? Supabase ???????????????????????????????????????????????????????????????
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null as any;
@@ -24,7 +24,7 @@ app.use('/api/auth', (req: Request, res: Response, next: any) => {
   next();
 });
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ?? Helpers ????????????????????????????????????????????????????????????????
 function genToken() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -49,12 +49,12 @@ async function getSessionUser(req: Request) {
   return user;
 }
 
-// ── Health ────────────────────────────────────────────────────────────────
+// ?? Health ????????????????????????????????????????????????????????????????
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', supabase: !!supabase, time: new Date().toISOString() });
 });
 
-// ── Auth ──────────────────────────────────────────────────────────────────
+// ?? Auth ??????????????????????????????????????????????????????????????????
 app.get('/api/auth/me', async (req, res) => {
   if (!supabase) return res.json({ user: null });
   const user = await getSessionUser(req);
@@ -91,7 +91,7 @@ app.post('/api/auth/register', async (req, res) => {
       supabase.from('credit_balances').insert({ user_id: userId, remaining_credits: 10, total_credits_available: 10 }),
     ]);
 
-    // Create workspace with NO seeded analytics — real data only
+    // Create workspace with NO seeded analytics ? real data only
     const { data: ws } = await supabase.from('workspaces')
       .insert({ name: `${name}'s Workspace`, owner_id: userId, referral_code: genCode() })
       .select().single();
@@ -160,7 +160,7 @@ app.post('/api/auth/demo', async (req, res) => {
   res.json({ user, token, subscription: sub, credit, success: true });
 });
 
-// ── Workspaces ────────────────────────────────────────────────────────────
+// ?? Workspaces ????????????????????????????????????????????????????????????
 app.get('/api/workspaces', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -196,7 +196,7 @@ app.post('/api/workspaces', async (req, res) => {
   res.status(201).json(ws);
 });
 
-// ── Social Accounts ───────────────────────────────────────────────────────
+// ?? Social Accounts ???????????????????????????????????????????????????????
 app.get('/api/social-accounts', async (req, res) => {
   const { workspaceId } = req.query;
   let q = supabase.from('social_accounts').select('*');
@@ -217,7 +217,7 @@ app.get('/api/social-accounts/oauth/url', async (req, res) => {
   if ((p === 'meta' || p === 'facebook' || p === 'instagram' || p === 'meta_ads')) {
     const appId = process.env.VITE_META_APP_ID || process.env.META_APP_ID || '';
     if (appId) {
-      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management,ads_read&state=${state}&response_type=code` });
+      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,business_management,ads_read,instagram_manage_insights,instagram_manage_comments&state=${state}&response_type=code` });
     }
     return res.json({ error: 'VITE_META_APP_ID not set in Vercel environment variables.' });
   }
@@ -270,7 +270,7 @@ app.post('/api/social-accounts/disconnect', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── OAuth Callback ────────────────────────────────────────────────────────
+// ?? OAuth Callback ????????????????????????????????????????????????????????
 app.get('/api/oauth-callback', async (req, res) => {
   const { code, state, error: oauthError } = req.query;
   const site = process.env.SITE_URL || process.env.VITE_SITE_URL || '';
@@ -297,10 +297,10 @@ function oauthPage(title: string, msg: string, success: boolean) {
   return `<!DOCTYPE html><html><head><title>${title}</title><script src="https://cdn.tailwindcss.com"></script></head>
 <body class="bg-[#0a0b10] flex items-center justify-center min-h-screen p-6">
 <div class="max-w-sm w-full bg-[#13151c] border border-slate-800 rounded-2xl p-8 text-center shadow-2xl">
-  <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-black" style="background:${color}20;color:${color}">${success ? '✓' : '✕'}</div>
+  <div class="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl font-black" style="background:${color}20;color:${color}">${success ? '?' : '?'}</div>
   <h2 class="text-base font-bold text-white mb-2">${title}</h2>
   <p class="text-xs text-slate-400 mb-4">${msg}</p>
-  ${success ? '<p class="text-xs text-slate-500">Window will close shortly…</p>' : ''}
+  ${success ? '<p class="text-xs text-slate-500">Window will close shortly?</p>' : ''}
 </div>
 <script>if(${success}){if(window.opener)window.opener.postMessage({type:'OAUTH_AUTH_SUCCESS'},'*');setTimeout(()=>window.close(),1800);}</script>
 </body></html>`;
@@ -359,7 +359,7 @@ async function exchangeGoogle(code: string, workspaceId: string, redir: string, 
   res.send(oauthPage('Google Connected!', 'YouTube channel connected. Sync analytics to pull real data.', true));
 }
 
-// ── Posts & Calendar ──────────────────────────────────────────────────────
+// ?? Posts & Calendar ??????????????????????????????????????????????????????
 app.get('/api/posts', async (req, res) => {
   const { workspaceId } = req.query;
   let q = supabase.from('scheduled_posts').select('*').order('publish_date', { ascending: true });
@@ -422,7 +422,7 @@ app.get('/api/holidays', (req, res) => {
   res.json(list.map(h => ({ ...h, date: y + h.date })));
 });
 
-// ── Analytics — REAL DATA from connected platforms ────────────────────────
+// ?? Analytics ? REAL DATA from connected platforms ????????????????????????
 app.get('/api/analytics', async (req, res) => {
   const { workspaceId } = req.query;
   if (!workspaceId) return res.json([]);
@@ -437,7 +437,7 @@ app.get('/api/analytics/history', async (req, res) => {
   res.json(data || []);
 });
 
-// Real sync — fetches live data from connected platform APIs
+// Real sync ? fetches live data from connected platform APIs
 app.post('/api/analytics/sync', async (req, res) => {
   const { workspaceId } = req.body;
   if (!workspaceId) return res.status(400).json({ error: 'workspaceId required' });
@@ -504,7 +504,7 @@ app.get('/api/analytics/best-times', async (req, res) => {
   res.json({ platform, message: 'Connect and sync your accounts to get personalised best-time recommendations based on your real audience data.', dataPoints: 0 });
 });
 
-// ── AI Caption — Gemini ONLY ──────────────────────────────────────────────
+// ?? AI Caption ? Gemini ONLY ??????????????????????????????????????????????
 app.post('/api/ai/caption', async (req, res) => {
   const { prompt, platform, tone, cta } = req.body;
   if (!prompt) return res.status(400).json({ error: 'Prompt required' });
@@ -526,7 +526,7 @@ app.post('/api/ai/caption', async (req, res) => {
   }
 });
 
-// ── AI Insights — Cloudflare ONLY ─────────────────────────────────────────
+// ?? AI Insights ? Cloudflare ONLY ?????????????????????????????????????????
 app.post('/api/ai/insights', async (req, res) => {
   const { platform, metrics } = req.body;
   const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -550,7 +550,7 @@ app.post('/api/ai/insights', async (req, res) => {
   }
 });
 
-// ── Credits ────────────────────────────────────────────────────────────────
+// ?? Credits ????????????????????????????????????????????????????????????????
 app.get('/api/credits/history', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -575,7 +575,7 @@ app.post('/api/credits/purchase', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Lead Finder — Google Places ONLY ──────────────────────────────────────
+// ?? Lead Finder ? Google Places ONLY ??????????????????????????????????????
 app.post('/api/leads/search', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -611,7 +611,7 @@ app.post('/api/leads/search', async (req, res) => {
   }
 });
 
-// ── Client Portal ─────────────────────────────────────────────────────────
+// ?? Client Portal ?????????????????????????????????????????????????????????
 app.get('/api/portal/:token', async (req, res) => {
   const { data: portal } = await supabase.from('client_portals').select('*, workspaces(*)').eq('share_token', req.params.token).eq('is_enabled', true).maybeSingle();
   if (!portal) return res.status(404).json({ error: 'Portal not found or disabled' });
@@ -622,7 +622,7 @@ app.get('/api/portal/:token', async (req, res) => {
   res.json({ workspaceName: (portal as any).workspaces?.name || 'Workspace', analytics: analytics || [], calendar: calendar || [] });
 });
 
-// ── Referrals ──────────────────────────────────────────────────────────────
+// ?? Referrals ??????????????????????????????????????????????????????????????
 app.get('/api/referrals', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -645,7 +645,7 @@ app.post('/api/referrals/redeem', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Billing ────────────────────────────────────────────────────────────────
+// ?? Billing ????????????????????????????????????????????????????????????????
 app.post('/api/billing/upgrade', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -657,7 +657,7 @@ app.post('/api/billing/upgrade', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Notifications ──────────────────────────────────────────────────────────
+// ?? Notifications ??????????????????????????????????????????????????????????
 app.get('/api/notifications', async (req, res) => {
   const user = await getSessionUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
@@ -673,7 +673,7 @@ app.post('/api/notifications/read', async (req, res) => {
   res.json({ success: true, notifications: data || [] });
 });
 
-// ── Properties / PMS ──────────────────────────────────────────────────────
+// ?? Properties / PMS ??????????????????????????????????????????????????????
 app.get('/api/pms/properties', async (req, res) => {
   const { workspaceId } = req.query;
   let q = supabase.from('properties').select('*');
@@ -773,13 +773,13 @@ app.post('/api/connections', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Setup guide when OAuth credentials not configured ────────────────────
+// ?? Setup guide when OAuth credentials not configured ????????????????????
 app.get('/oauth-mimic/authorize', (_req, res) => {
   res.send(`<!DOCTYPE html><html><head><title>Setup Required</title>
 <script src="https://cdn.tailwindcss.com"></script></head>
 <body class="bg-[#0a0b10] text-white flex items-center justify-center min-h-screen p-6">
 <div class="max-w-lg w-full bg-[#13151c] border border-slate-800 rounded-2xl p-8 shadow-2xl">
-  <div class="text-3xl mb-4 text-center">⚙️</div>
+  <div class="text-3xl mb-4 text-center font-mono text-slate-400">[!]</div>
   <h2 class="text-base font-bold text-white mb-2 text-center">OAuth credentials not configured</h2>
   <p class="text-xs text-slate-400 text-center mb-6">Add these environment variables in Vercel to enable real social media login</p>
   <div class="space-y-3 text-xs">
@@ -804,7 +804,7 @@ app.get('/oauth-mimic/authorize', (_req, res) => {
 </div></body></html>`);
 });
 
-// ── Vercel export ──────────────────────────────────────────────────────────
+// ?? Vercel export ??????????????????????????????????????????????????????????
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
