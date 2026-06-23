@@ -3,8 +3,8 @@ import {
   TrendingUp, Calendar, Sparkles, Zap, Gift, CreditCard, Coins,
   Building, Bell, LogOut, ChevronDown, Plus, Link, Moon, Sun,
   X, Menu, Wifi, WifiOff, Shield, ArrowRight, Check, Play,
-  BarChart3, Users, Globe, Star, ChevronRight, Instagram,
-  Loader2, Mail, User
+  BarChart3, Users, Globe, Star, ChevronRight,
+  Loader2, Mail, User, Lock
 } from 'lucide-react';
 import AnalyticsView from './components/AnalyticsView';
 import CalendarView from './components/CalendarView';
@@ -103,6 +103,7 @@ export default function App() {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isMobileMenu, setIsMobileMenu] = useState(false);
   const [isNewWsModal, setIsNewWsModal] = useState(false);
+  const [wsDropOpen,   setWsDropOpen]   = useState(false);
   const [newWsName, setNewWsName] = useState('');
 
   useEffect(() => {
@@ -152,12 +153,12 @@ export default function App() {
     setAuthSubmitting(true);
     try {
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
-      const payload = authMode === 'login' ? { email: authEmail } : { email: authEmail, name: authName };
+      const payload = authMode === 'login' ? { email: authEmail, password: authPassword } : { email: authEmail, name: authName, password: authPassword };
       const data = await api.post(endpoint, payload);
       if (data?.token) {
         localStorage.setItem('velox_token', data.token);
         setUser(data.user); setAuthModal(false);
-        setAuthEmail(''); setAuthName('');
+        setAuthEmail(''); setAuthName(''); setAuthPassword('');
         setAuthLoading(true);
         await loadDashboard();
       } else {
@@ -276,6 +277,12 @@ export default function App() {
                 <div className="relative">
                   <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }}/>
                   <input type="email" required placeholder="Email address" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                    className="w-full text-sm rounded-xl pl-9 pr-3 py-3 border outline-none"
+                    style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}/>
+                </div>
+                <div className="relative">
+                  <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--muted)' }}/>
+                  <input type="password" required minLength={6} placeholder="Password (min. 6 characters)" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && (e.currentTarget.form as HTMLFormElement)?.requestSubmit()}
                     className="w-full text-sm rounded-xl pl-9 pr-3 py-3 border outline-none"
                     style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}/>
@@ -583,23 +590,36 @@ export default function App() {
         </div>
         <div className="flex items-center gap-2">
           {activeWorkspace && (
-            <div className="relative group">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl cursor-pointer text-xs font-semibold border" style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
+            <div className="relative">
+              <button onClick={() => setWsDropOpen(o => !o)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl cursor-pointer text-xs font-semibold border"
+                style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text)' }}>
                 <span className="hidden sm:inline" style={{ color: 'var(--muted)' }}>Workspace:</span>
                 <span className="max-w-[90px] truncate">{activeWorkspace.name}</span>
-                <ChevronDown size={11} style={{ color: 'var(--muted)' }}/>
-              </div>
-              <div className="hidden group-hover:block absolute right-0 top-10 rounded-xl shadow-xl z-50 py-1 w-48 border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                {workspaces.map(ws => (
-                  <button key={ws.id} onClick={() => setActiveWorkspace(ws)} className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--surface)] transition-all" style={{ color: activeWorkspace.id === ws.id ? 'var(--primary)' : 'var(--text)' }}>
-                    {ws.name}
-                  </button>
-                ))}
-                <div className="border-t my-1" style={{ borderColor: 'var(--border)' }}/>
-                <button onClick={() => setIsNewWsModal(true)} className="w-full text-left px-3 py-2 text-xs flex items-center gap-1.5 font-semibold" style={{ color: 'var(--primary)' }}>
-                  <Plus size={11}/> New workspace
-                </button>
-              </div>
+                <ChevronDown size={11} style={{ color: 'var(--muted)', transform: wsDropOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}/>
+              </button>
+              {wsDropOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setWsDropOpen(false)}/>
+                  <div className="absolute right-0 top-10 rounded-xl shadow-xl z-50 py-1 w-52 border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                    <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Your workspaces</div>
+                    {workspaces.map(ws => (
+                      <button key={ws.id} onClick={() => { setActiveWorkspace(ws); setWsDropOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-xs transition-all flex items-center gap-2 cursor-pointer"
+                        style={{ color: activeWorkspace.id === ws.id ? 'var(--primary)' : 'var(--text)', background: activeWorkspace.id === ws.id ? 'var(--primary-soft)' : 'transparent' }}>
+                        {activeWorkspace.id === ws.id && <span style={{ color: 'var(--primary)' }}>✓</span>}
+                        {ws.name}
+                      </button>
+                    ))}
+                    <div className="border-t my-1" style={{ borderColor: 'var(--border)' }}/>
+                    <button onClick={() => { setWsDropOpen(false); setIsNewWsModal(true); }}
+                      className="w-full text-left px-3 py-2 text-xs flex items-center gap-1.5 font-semibold cursor-pointer transition-all"
+                      style={{ color: 'var(--primary)' }}>
+                      <Plus size={11}/> Add new workspace
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
           <div className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold`}

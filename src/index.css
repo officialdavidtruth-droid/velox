@@ -108,5 +108,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
+/* Cursor — every clickable element shows hand icon */
+button, a, select, input[type="checkbox"], input[type="radio"], input[type="range"],
+[role="button"], [role="tab"], [role="option"], label[for],
+.cursor-pointer { cursor: pointer !important; }
+
 /* Transitions */
 * { transition-property: background-color, border-color, color; transition-duration: 0.15s; }

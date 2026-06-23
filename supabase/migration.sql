@@ -45,13 +45,15 @@ drop function if exists public.is_workspace_member cascade;
 -- ── Create all tables with consistent uuid types ──────────────────────────
 
 create table public.velox_users (
-  id         uuid default gen_random_uuid() primary key,
-  email      text not null unique,
-  name       text not null default '',
-  role       text not null default 'agency',
-  country    text default 'Nigeria',
-  avatar_url text default '',
-  created_at timestamptz default now()
+  id            uuid default gen_random_uuid() primary key,
+  email         text not null unique,
+  name          text not null default '',
+  role          text not null default 'agency',
+  country       text default 'Nigeria',
+  avatar_url    text default '',
+  password_hash text default '',
+  password_salt text default '',
+  created_at    timestamptz default now()
 );
 
 create table public.velox_sessions (

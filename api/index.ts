@@ -31,6 +31,12 @@ function genToken() {
 function genCode() {
   return crypto.randomBytes(4).toString('hex').toUpperCase();
 }
+function hashPwd(password: string, salt: string): string {
+  return crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+}
+function verifyPwd(password: string, salt: string, hash: string): boolean {
+  return hashPwd(password, salt) === hash;
+}
 
 async function getSessionUser(req: Request) {
   const token = req.headers['x-session-token'] as string;
@@ -61,18 +67,21 @@ app.get('/api/auth/me', async (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, name, role, country } = req.body;
+  const { email, name, password, role, country } = req.body;
   if (!email || !name) return res.status(400).json({ error: 'Email and name required' });
+  if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters.' });
 
   let userId: string;
   const { data: existing } = await supabase.from('velox_users')
     .select('*').eq('email', email.toLowerCase()).maybeSingle();
 
   if (existing) {
-    userId = existing.id;
+    return res.status(400).json({ error: 'An account with this email already exists. Please sign in instead.' });
   } else {
+    const salt = crypto.randomBytes(32).toString('hex');
+    const hash = hashPwd(password, salt);
     const { data: newUser, error } = await supabase.from('velox_users')
-      .insert({ email: email.toLowerCase(), name, role: role || 'agency', country: country || 'Nigeria' })
+      .insert({ email: email.toLowerCase(), name, role: role || 'agency', country: country || 'Nigeria', password_hash: hash, password_salt: salt })
       .select().single();
     if (error || !newUser) return res.status(500).json({ error: 'Registration failed: ' + (error?.message || 'unknown') });
     userId = newUser.id;
@@ -93,19 +102,28 @@ app.post('/api/auth/register', async (req, res) => {
 
   const token = genToken();
   await supabase.from('velox_sessions').insert({ token, user_id: userId });
-  const { data: user } = await supabase.from('velox_users').select('*').eq('id', userId).single();
+  const { data: rawUser } = await supabase.from('velox_users').select('*').eq('id', userId).single();
+  const { password_hash, password_salt, ...user } = rawUser || {};
   res.json({ user, token });
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
+  if (!password) return res.status(400).json({ error: 'Password required' });
   const { data: user } = await supabase.from('velox_users')
     .select('*').eq('email', email.toLowerCase()).maybeSingle();
-  if (!user) return res.status(404).json({ error: 'No account found. Please register first.' });
+  if (!user) return res.status(404).json({ error: 'No account with this email. Please sign up first.' });
+  // Allow legacy accounts (no password set) to log in without password check
+  if (user.password_hash && user.password_salt) {
+    if (!verifyPwd(password, user.password_salt, user.password_hash)) {
+      return res.status(401).json({ error: 'Incorrect password. Please try again.' });
+    }
+  }
   const token = genToken();
   await supabase.from('velox_sessions').insert({ token, user_id: user.id });
-  res.json({ user, token });
+  const { password_hash, password_salt, ...safeUser } = user;
+  res.json({ user: safeUser, token });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -755,41 +773,35 @@ app.post('/api/connections', async (req, res) => {
   res.json({ success: true });
 });
 
-// ── Mock OAuth page (fallback when env vars not set) ─────────────────────
-app.get('/oauth-mimic/authorize', (req, res) => {
-  const { platform, workspaceId } = req.query;
-  const p = String(platform).toLowerCase();
-  const colors: Record<string, string> = { instagram: '#e1306c', tiktok: '#fe2c55', facebook: '#1877F2', linkedin: '#0077b5' };
-  const color = colors[p] || '#6366f1';
-  res.send(`<!DOCTYPE html><html><head><title>Connect ${p}</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-[#0b0f19] text-white flex items-center justify-center min-h-screen p-4">
-<div class="max-w-sm w-full bg-[#111827] border border-slate-800 rounded-2xl p-6 shadow-2xl">
-  <h2 class="text-base font-bold text-white mb-1">Connect ${p}</h2>
-  <p class="text-xs text-slate-400 mb-4">Enter your account details to connect</p>
-  <form action="/api/social-accounts/oauth/callback" method="GET" class="space-y-3">
-    <input type="hidden" name="workspaceId" value="${workspaceId || ''}" />
-    <input type="hidden" name="platform" value="${p}" />
-    <input type="text" name="handle" required placeholder="@handle or username" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none" />
-    <input type="text" name="accountName" required placeholder="Display name" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none" />
-    <div class="flex gap-3 pt-2">
-      <button type="button" onclick="window.close()" class="flex-1 border border-slate-700 text-slate-300 font-semibold text-sm py-2.5 rounded-xl">Cancel</button>
-      <button type="submit" style="background:${color}" class="flex-1 text-white font-semibold text-sm py-2.5 rounded-xl">Connect</button>
+// ── Setup guide when OAuth credentials not configured ────────────────────
+app.get('/oauth-mimic/authorize', (_req, res) => {
+  res.send(`<!DOCTYPE html><html><head><title>Setup Required</title>
+<script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-[#0a0b10] text-white flex items-center justify-center min-h-screen p-6">
+<div class="max-w-lg w-full bg-[#13151c] border border-slate-800 rounded-2xl p-8 shadow-2xl">
+  <div class="text-3xl mb-4 text-center">⚙️</div>
+  <h2 class="text-base font-bold text-white mb-2 text-center">OAuth credentials not configured</h2>
+  <p class="text-xs text-slate-400 text-center mb-6">Add these environment variables in Vercel to enable real social media login</p>
+  <div class="space-y-3 text-xs">
+    <div class="bg-slate-900 rounded-xl p-4 border border-slate-800">
+      <p class="font-bold text-indigo-400 mb-2">Meta (Instagram + Facebook + Meta Ads)</p>
+      <code class="block text-slate-300">VITE_META_APP_ID = 986887807459463</code>
+      <code class="block text-slate-300 mt-1">META_APP_SECRET = [from Facebook Developer Portal]</code>
+      <code class="block text-slate-300 mt-1">VITE_SITE_URL = https://your-site.vercel.app</code>
+      <code class="block text-slate-300 mt-1">SITE_URL = https://your-site.vercel.app</code>
     </div>
-  </form>
+    <div class="bg-slate-900 rounded-xl p-4 border border-slate-800">
+      <p class="font-bold text-blue-400 mb-2">Google (YouTube + Google Ads)</p>
+      <code class="block text-slate-300">VITE_GOOGLE_CLIENT_ID = [from Google Cloud Console]</code>
+      <code class="block text-slate-300 mt-1">GOOGLE_CLIENT_SECRET = [from Google Cloud Console]</code>
+    </div>
+    <div class="bg-slate-900 rounded-xl p-4 border border-slate-800">
+      <p class="font-bold text-slate-300 mb-2">Then add this redirect URI to each platform's developer portal:</p>
+      <code class="block text-yellow-400">https://your-site.vercel.app/api/oauth-callback</code>
+    </div>
+  </div>
+  <button onclick="window.close()" class="w-full mt-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold text-sm cursor-pointer">Close</button>
 </div></body></html>`);
-});
-
-app.get('/api/social-accounts/oauth/callback', async (req, res) => {
-  const { platform, workspaceId, handle, accountName } = req.query;
-  if (!platform || !workspaceId || !handle) return res.status(400).send('<p>Missing parameters</p>');
-  const h = String(handle);
-  const fullHandle = h.startsWith('@') ? h : '@' + h;
-  await supabase.from('social_accounts').upsert({ workspace_id: String(workspaceId), platform: String(platform), account_name: String(accountName || 'My Account'), handle: fullHandle, avatar_url: '', status: 'active', connected_at: new Date().toISOString(), expires_at: new Date(Date.now() + 30*24*3600000).toISOString() }, { onConflict: 'workspace_id,platform' });
-  res.send(`<html><head><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-[#0b0f19] text-white flex items-center justify-center min-h-screen">
-<div class="text-center p-8"><div class="text-4xl mb-4">✓</div><h2 class="text-white font-bold">Connected!</h2><p class="text-slate-400 text-sm mt-2">${fullHandle} connected.</p></div>
-<script>if(window.opener)window.opener.postMessage({type:'OAUTH_AUTH_SUCCESS'},'*');setTimeout(()=>window.close(),1500);</script>
-</body></html>`);
 });
 
 // ── Vercel export ──────────────────────────────────────────────────────────
