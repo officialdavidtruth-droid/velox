@@ -217,7 +217,7 @@ app.get('/api/social-accounts/oauth/url', async (req, res) => {
   if ((p === 'meta' || p === 'facebook' || p === 'instagram' || p === 'meta_ads')) {
     const appId = process.env.VITE_META_APP_ID || process.env.META_APP_ID || '';
     if (appId) {
-      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,business_management,ads_read,instagram_manage_insights,instagram_manage_comments&state=${state}&response_type=code` });
+      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,business_management,ads_read,instagram_basic&state=${state}&response_type=code` });
     }
     return res.json({ error: 'VITE_META_APP_ID not set in Vercel environment variables.' });
   }
@@ -457,7 +457,26 @@ app.post('/api/analytics/sync', async (req, res) => {
         }
       }
       if (account.platform === 'instagram' && account.access_token) {
-        const r = await fetch(`https://graph.facebook.com/v18.0/${account.handle.replace('@','')}?fields=followers_count,media_count&access_token=${account.access_token}`);
+        // Resolve handle: if it's a username (not a numeric ID), look up the real IG Business Account ID via pages
+        let igAccountId = account.handle.replace('@', '');
+        if (!/^\d+$/.test(igAccountId)) {
+          try {
+            const pagesRes = await fetch(`https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${account.access_token}`);
+            const pagesData: any = await pagesRes.json();
+            const pages = pagesData.data || [];
+            for (const page of pages) {
+              const igRes = await fetch(`https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{id,username}&access_token=${page.access_token || account.access_token}`);
+              const igData: any = await igRes.json();
+              if (igData.instagram_business_account?.id) {
+                igAccountId = igData.instagram_business_account.id;
+                // Update the stored handle so future syncs use the numeric ID directly
+                await supabase.from('social_accounts').update({ handle: igAccountId }).eq('id', account.id);
+                break;
+              }
+            }
+          } catch (_) { /* fall through with original handle */ }
+        }
+        const r = await fetch(`https://graph.facebook.com/v18.0/${igAccountId}?fields=followers_count,media_count&access_token=${account.access_token}`);
         const d: any = await r.json();
         if (d.followers_count !== undefined) {
           metrics = { followers: d.followers_count || 0, posts: d.media_count || 0, reach: 0, impressions: 0, engagement: 0 };
