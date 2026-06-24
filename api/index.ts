@@ -217,7 +217,7 @@ app.get('/api/social-accounts/oauth/url', async (req, res) => {
   if ((p === 'meta' || p === 'facebook' || p === 'instagram' || p === 'meta_ads')) {
     const appId = process.env.VITE_META_APP_ID || process.env.META_APP_ID || '';
     if (appId) {
-      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,business_management,ads_read,instagram_basic&state=${state}&response_type=code` });
+      return res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redir)}&scope=pages_show_list,pages_read_engagement,business_management,ads_read&state=${state}&response_type=code` });
     }
     return res.json({ error: 'VITE_META_APP_ID not set in Vercel environment variables.' });
   }
