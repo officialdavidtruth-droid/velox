@@ -3,8 +3,8 @@ import {
   TrendingUp, Calendar, Sparkles, Zap, Gift, CreditCard, Coins,
   Building, Bell, LogOut, ChevronDown, Plus, Link, Moon, Sun,
   X, Menu, Wifi, WifiOff, Shield, ArrowRight, Check, Play,
-  BarChart3, Users, Globe, Star, ChevronRight,
-  Loader2, Mail, User, Lock
+  BarChart3, Users, Globe, Star, ChevronRight, Home, Target,
+  PieChart, Loader2, Mail, User, Lock
 } from 'lucide-react';
 import AnalyticsView from './components/AnalyticsView';
 import CalendarView from './components/CalendarView';
@@ -16,6 +16,10 @@ import ClientPortalView from './components/ClientPortalView';
 import PropertyManager from './components/PropertyManager';
 import AccountConnector from './components/AccountConnector';
 import RoasAnalytics from './components/RoasAnalytics';
+import Dashboard from './components/Dashboard';
+import CampaignTracker from './components/CampaignTracker';
+import LeadPipeline from './components/LeadPipeline';
+import WebsiteAnalytics from './components/WebsiteAnalytics';
 
 // ── API helper with timeout + error handling ────────────────────────────────
 const TIMEOUT_MS = 12000;
@@ -94,7 +98,7 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as any) || 'dark');
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<any>(null);
-  const [currentView, setCurrentView] = useState('analytics');
+  const [currentView, setCurrentView] = useState('dashboard');
   const [posts, setPosts] = useState<any[]>([]);
   const [analyticsData, setAnalyticsData] = useState<any[]>([]);
   const [analyticsHistory, setAnalyticsHistory] = useState<any[]>([]);
@@ -195,7 +199,7 @@ export default function App() {
   const handleLogout = async () => {
     await api.post('/api/auth/logout');
     localStorage.removeItem('velox_token');
-    setUser(null); setActiveWorkspace(null); setCurrentView('analytics');
+    setUser(null); setActiveWorkspace(null); setCurrentView('dashboard');
     setWorkspaces([]); setAnalyticsData([]); setPosts([]);
   };
 
@@ -666,19 +670,22 @@ export default function App() {
       </header>
 
       <div className="flex flex-1">
-        <aside className={`${isMobileMenu ? 'fixed inset-0 top-14 z-40' : 'hidden'} md:flex flex-col w-52 border-r p-3 gap-1 shrink-0`}
+        <aside className={`${isMobileMenu ? 'fixed inset-0 top-14 z-40' : 'hidden'} md:flex flex-col w-56 border-r p-3 gap-0.5 shrink-0 overflow-y-auto`}
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-          <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-2 pb-1" style={{ color: 'var(--muted)' }}>Analytics</p>
-          {nav('analytics', 'Live Analytics', <TrendingUp size={13}/>)}
-          {nav('roas-analytics', 'Ads & ROAS', <Coins size={13}/>)}
-          {nav('accounts-connector', 'Connect Accounts', <Link size={13}/>)}
+          {nav('dashboard', 'Dashboard', <Home size={13}/>)}
+          <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Analytics</p>
+          {nav('analytics', 'Social Analytics', <TrendingUp size={13}/>)}
+          {nav('website', 'Website Analytics', <Globe size={13}/>)}
+          {nav('campaigns', 'Campaign Tracker', <Target size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Content</p>
-          {nav('calendar', 'Calendar', <Calendar size={13}/>)}
+          {nav('calendar', 'Content Calendar', <Calendar size={13}/>)}
           {nav('copywriter', 'AI Captions', <Sparkles size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Growth</p>
           {nav('leads', 'Lead Finder', <Zap size={13}/>)}
-          {nav('pms', 'Business Mgmt', <Building size={13}/>)}
-          <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Account</p>
+          {nav('pipeline', 'Lead Pipeline', <PieChart size={13}/>)}
+          {nav('pms', 'Client Manager', <Building size={13}/>)}
+          <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Workspace</p>
+          {nav('accounts-connector', 'Connect Accounts', <Link size={13}/>)}
           {nav('referrals', 'Referrals', <Gift size={13}/>)}
           {nav('billing', 'Billing', <CreditCard size={13}/>)}
           <div className="mt-auto pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
@@ -690,12 +697,15 @@ export default function App() {
 
         {activeWorkspace && (
           <main className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-0">
+            {currentView === 'dashboard' && <Dashboard user={user} workspaceId={activeWorkspace.id} analytics={analyticsData} posts={posts} subscription={subscription} onNavigate={setCurrentView}/>}
             {currentView === 'analytics' && <AnalyticsView workspaceId={activeWorkspace.id} analytics={analyticsData} history={analyticsHistory} onRefresh={loadDashboard}/>}
-            {currentView === 'roas-analytics' && <RoasAnalytics workspaceId={activeWorkspace.id}/>}
+            {currentView === 'website' && <WebsiteAnalytics workspaceId={activeWorkspace.id}/>}
+            {currentView === 'campaigns' && <CampaignTracker workspaceId={activeWorkspace.id}/>}
             {currentView === 'calendar' && <CalendarView workspaceId={activeWorkspace.id} posts={posts} onRefresh={loadDashboard} isOffline={!isOnline}/>}
-            {currentView === 'accounts-connector' && <AccountConnector workspaceId={activeWorkspace.id}/>}
             {currentView === 'copywriter' && <CaptionGenerator workspaceId={activeWorkspace.id} onPostScheduled={loadDashboard}/>}
             {currentView === 'leads' && <LeadFinder workspaceId={activeWorkspace.id}/>}
+            {currentView === 'pipeline' && <LeadPipeline workspaceId={activeWorkspace.id}/>}
+            {currentView === 'accounts-connector' && <AccountConnector workspaceId={activeWorkspace.id}/>}
             {currentView === 'pms' && <PropertyManager workspaceId={activeWorkspace.id} isOffline={!isOnline} onAddPostToCalendar={(post: any) => {
               api.post('/api/posts', { workspace_id: activeWorkspace.id, title: post.title, description: post.description, platforms: post.platforms, cta: 'None', publish_date: new Date(Date.now() + post.delayHours*3600000).toISOString() }).then(() => { loadDashboard(); setCurrentView('calendar'); });
             }}/>}

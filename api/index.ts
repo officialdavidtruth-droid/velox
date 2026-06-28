@@ -841,6 +841,97 @@ app.get('/oauth-mimic/authorize', (_req, res) => {
 });
 
 // ?? Vercel export ??????????????????????????????????????????????????????????
+
+// ── AI Morning Brief ────────────────────────────────────────────────────────
+app.get('/api/ai/brief', async (req, res) => {
+  const { workspaceId } = req.query;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey || !workspaceId) return res.json({ brief: null });
+  try {
+    const [{ data: analytics }, { data: posts }, { data: leads }] = await Promise.all([
+      supabase.from('analytics').select('*').eq('workspace_id', workspaceId),
+      supabase.from('scheduled_posts').select('*').eq('workspace_id', workspaceId).gte('publish_date', new Date().toISOString()).limit(5),
+      supabase.from('leads').select('id,created_at').eq('workspace_id', workspaceId).gte('created_at', new Date(Date.now()-7*24*3600000).toISOString()),
+    ]);
+    const { GoogleGenAI } = await import('@google/genai');
+    const genai = new GoogleGenAI({ apiKey: geminiKey });
+    const prompt = `You are a digital marketing AI assistant. Generate a concise morning brief for a digital marketer. Data: Analytics: ${JSON.stringify((analytics||[]).map((a:any)=>({platform:a.platform,followers:a.followers,reach:a.reach})))}. Upcoming posts: ${posts?.length||0}. New leads this week: ${leads?.length||0}. Return ONLY valid JSON: { greeting: string, insight: string, highlights: string[], action_items: string[] }. No markdown.`;
+    const resp = await genai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt });
+    const text = resp.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return res.json({ brief: null });
+    res.json({ brief: JSON.parse(match[0]) });
+  } catch (e: any) { res.json({ brief: null }); }
+});
+
+// ── Campaigns ────────────────────────────────────────────────────────────────
+app.get('/api/campaigns', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.json([]);
+  const { data } = await supabase.from('campaigns').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false });
+  res.json(data || []);
+});
+app.post('/api/campaigns', async (req, res) => {
+  const { data } = await supabase.from('campaigns').insert(req.body).select().single();
+  res.status(201).json(data);
+});
+app.put('/api/campaigns/:id', async (req, res) => {
+  const { data } = await supabase.from('campaigns').update(req.body).eq('id', req.params.id).select().single();
+  res.json(data);
+});
+app.delete('/api/campaigns/:id', async (req, res) => {
+  await supabase.from('campaigns').delete().eq('id', req.params.id);
+  res.json({ success: true });
+});
+
+// ── Lead Pipeline ─────────────────────────────────────────────────────────────
+app.get('/api/leads', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.json([]);
+  const { data } = await supabase.from('leads').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false });
+  res.json(data || []);
+});
+app.put('/api/leads/:id/stage', async (req, res) => {
+  const { stage } = req.body;
+  const { data } = await supabase.from('leads').update({ status: stage }).eq('id', req.params.id).select().single();
+  res.json(data);
+});
+
+// ── UTM Builder ───────────────────────────────────────────────────────────────
+app.get('/api/utm/links', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.json([]);
+  const { data } = await supabase.from('utm_links').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(50);
+  res.json(data || []);
+});
+app.post('/api/utm/save', async (req, res) => {
+  const { data } = await supabase.from('utm_links').insert(req.body).select().single();
+  res.status(201).json(data);
+});
+app.delete('/api/utm/links/:id', async (req, res) => {
+  await supabase.from('utm_links').delete().eq('id', req.params.id);
+  res.json({ success: true });
+});
+
+// ── Website Analytics (GA4) ───────────────────────────────────────────────────
+app.post('/api/website-analytics/connect', async (req, res) => {
+  const { workspaceId, propertyId, accessToken } = req.body;
+  await supabase.from('social_accounts').upsert({ workspace_id: workspaceId, platform: 'ga4', handle: propertyId, access_token: accessToken||'', account_name: 'Google Analytics 4', status: 'active', connected_at: new Date().toISOString(), expires_at: new Date(Date.now()+3600000).toISOString() }, { onConflict: 'workspace_id,platform' });
+  res.json({ success: true });
+});
+app.post('/api/website-analytics/sync', async (req, res) => {
+  const { workspaceId } = req.body;
+  const { data: account } = await supabase.from('social_accounts').select('*').eq('workspace_id', workspaceId).eq('platform', 'ga4').maybeSingle();
+  if (!account?.handle) return res.json({ success: false, error: 'No GA4 property connected' });
+  if (!account.access_token) return res.json({ success: false, error: 'No Google access token' });
+  try {
+    const r = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${account.handle}:runReport`, { method: 'POST', headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }], metrics: [{ name:'sessions' },{ name:'activeUsers' },{ name:'newUsers' },{ name:'bounceRate' },{ name:'averageSessionDuration' },{ name:'conversions' }], dimensions: [{ name:'sessionDefaultChannelGrouping' }] }) });
+    const d: any = await r.json();
+    if (d.error) return res.json({ success: false, error: d.error.message });
+    res.json({ success: true, data: d.rows || [] });
+  } catch (e: any) { res.json({ success: false, error: e.message }); }
+});
+
 export default function handler(req: any, res: any) {
   return app(req, res);
 }
