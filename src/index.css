@@ -1,43 +1,43 @@
 @import "tailwindcss";
 
-/* ── VeloxSpace Design System ──────────────────────────────────── */
+/* ── VeloxSpace Design System — Brown & Beige ──────────────────── */
 :root {
-  --bg:           #f8fafc;
-  --surface:      #f1f5f9;
-  --card:         #ffffff;
-  --card-alt:     #f8fafc;
-  --border:       #e2e8f0;
-  --text:         #0f172a;
-  --text-soft:    #334155;
-  --muted:        #64748b;
-  --primary:      #6366f1;
-  --primary-soft: rgba(99,102,241,0.08);
-  --primary-l:    rgba(99,102,241,0.12);
+  --bg:           #FBF8F3;
+  --surface:      #F0E9DE;
+  --card:         #FFFFFF;
+  --card-alt:     #FBF8F3;
+  --border:       #DDD0BE;
+  --text:         #2C1A0E;
+  --text-soft:    #5C3D28;
+  --muted:        #9B7D65;
+  --primary:      #8B4513;
+  --primary-soft: rgba(139,69,19,0.08);
+  --primary-l:    rgba(139,69,19,0.14);
   --success:      #10b981;
   --success-bg:   rgba(16,185,129,0.08);
-  --warning:      #f59e0b;
-  --warning-bg:   rgba(245,158,11,0.08);
+  --warning:      #d97706;
+  --warning-bg:   rgba(217,119,6,0.08);
   --danger:       #ef4444;
   --danger-bg:    rgba(239,68,68,0.08);
   --info:         #3b82f6;
   --info-bg:      rgba(59,130,246,0.08);
-  --shadow-sm:    0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-lg:    0 10px 40px rgba(0,0,0,0.12);
-  --shadow-glow:  0 0 0 3px rgba(99,102,241,0.15);
+  --shadow-sm:    0 1px 3px rgba(60,30,0,0.08), 0 1px 2px rgba(60,30,0,0.05);
+  --shadow-lg:    0 10px 40px rgba(60,30,0,0.15);
+  --shadow-glow:  0 0 0 3px rgba(139,69,19,0.18);
 }
 
 .dark {
-  --bg:           #0a0b10;
-  --surface:      #111318;
-  --card:         #13151c;
-  --card-alt:     #0f1117;
-  --border:       #1e2130;
-  --text:         #f1f5f9;
-  --text-soft:    #cbd5e1;
-  --muted:        #64748b;
-  --primary:      #818cf8;
-  --primary-soft: rgba(129,140,248,0.1);
-  --primary-l:    rgba(129,140,248,0.15);
+  --bg:           #150F08;
+  --surface:      #1E150A;
+  --card:         #27180E;
+  --card-alt:     #221409;
+  --border:       #3D2A18;
+  --text:         #F0E6D3;
+  --text-soft:    #D4B896;
+  --muted:        #9C8468;
+  --primary:      #C4783A;
+  --primary-soft: rgba(196,120,58,0.12);
+  --primary-l:    rgba(196,120,58,0.20);
   --success:      #34d399;
   --success-bg:   rgba(52,211,153,0.08);
   --warning:      #fbbf24;
@@ -46,7 +46,7 @@
   --danger-bg:    rgba(248,113,113,0.08);
   --info:         #60a5fa;
   --info-bg:      rgba(96,165,250,0.08);
-  --shadow-glow:  0 0 0 3px rgba(129,140,248,0.2);
+  --shadow-glow:  0 0 0 3px rgba(196,120,58,0.28);
 }
 
 * { box-sizing: border-box; }
@@ -54,10 +54,10 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 
 /* Gradient buttons */
 .gradient-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #8B4513 0%, #C4783A 100%);
 }
 .dark .gradient-primary {
-  background: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+  background: linear-gradient(135deg, #C4783A 0%, #D4956A 100%);
 }
 
 /* Glow cards */
@@ -92,8 +92,8 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 
 /* VeloxSpace logo animation */
 @keyframes velox-pulse-glow {
-  0%,100% { filter: drop-shadow(0 0 4px rgba(250,204,21,0.4)); }
-  50%      { filter: drop-shadow(0 0 12px rgba(250,204,21,0.9)); }
+  0%,100% { filter: drop-shadow(0 0 4px rgba(196,120,58,0.5)); }
+  50%      { filter: drop-shadow(0 0 14px rgba(196,120,58,1)); }
 }
 @keyframes velox-bolt-flicker {
   0%,49%,51%,100% { opacity: 1; }
@@ -108,7 +108,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Inter', system-u
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* Cursor — every clickable element shows hand icon */
+/* Cursor */
 button, a, select, input[type="checkbox"], input[type="radio"], input[type="range"],
 [role="button"], [role="tab"], [role="option"], label[for],
 .cursor-pointer { cursor: pointer !important; }

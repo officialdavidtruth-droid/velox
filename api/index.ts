@@ -457,29 +457,46 @@ app.post('/api/analytics/sync', async (req, res) => {
         }
       }
       if (account.platform === 'instagram' && account.access_token) {
-        // Resolve handle: if it's a username (not a numeric ID), look up the real IG Business Account ID via pages
         let igAccountId = account.handle.replace('@', '');
+        let resolvedFromPage = false;
+        // If handle is a username (not numeric), resolve to IG Business Account ID via Facebook Pages
         if (!/^\d+$/.test(igAccountId)) {
           try {
             const pagesRes = await fetch(`https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token&access_token=${account.access_token}`);
             const pagesData: any = await pagesRes.json();
-            const pages = pagesData.data || [];
-            for (const page of pages) {
-              const igRes = await fetch(`https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{id,username}&access_token=${page.access_token || account.access_token}`);
+            for (const page of (pagesData.data || [])) {
+              const pageToken = page.access_token || account.access_token;
+              const igRes = await fetch(`https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{id,name,username,followers_count,media_count,profile_picture_url}&access_token=${pageToken}`);
               const igData: any = await igRes.json();
-              if (igData.instagram_business_account?.id) {
-                igAccountId = igData.instagram_business_account.id;
-                // Update the stored handle so future syncs use the numeric ID directly
-                await supabase.from('social_accounts').update({ handle: igAccountId }).eq('id', account.id);
+              const ig = igData.instagram_business_account;
+              if (ig?.id) {
+                igAccountId = ig.id;
+                resolvedFromPage = true;
+                // Save numeric ID + avatar + name so future syncs are fast
+                await supabase.from('social_accounts').update({
+                  handle: igAccountId,
+                  avatar_url: ig.profile_picture_url || account.avatar_url || '',
+                  account_name: ig.name || ig.username || account.account_name,
+                }).eq('id', account.id);
+                // Use metrics from this call directly
+                if (ig.followers_count !== undefined) {
+                  metrics = { followers: ig.followers_count || 0, posts: ig.media_count || 0, reach: 0, impressions: 0, engagement: 0 };
+                }
                 break;
               }
             }
-          } catch (_) { /* fall through with original handle */ }
+          } catch (_) { /* fall through */ }
         }
-        const r = await fetch(`https://graph.facebook.com/v18.0/${igAccountId}?fields=followers_count,media_count&access_token=${account.access_token}`);
-        const d: any = await r.json();
-        if (d.followers_count !== undefined) {
-          metrics = { followers: d.followers_count || 0, posts: d.media_count || 0, reach: 0, impressions: 0, engagement: 0 };
+        // If not resolved from page (handle was already numeric), fetch directly
+        if (!resolvedFromPage) {
+          const r = await fetch(`https://graph.facebook.com/v18.0/${igAccountId}?fields=followers_count,media_count,profile_picture_url&access_token=${account.access_token}`);
+          const d: any = await r.json();
+          if (d.followers_count !== undefined) {
+            metrics = { followers: d.followers_count || 0, posts: d.media_count || 0, reach: 0, impressions: 0, engagement: 0 };
+            if (d.profile_picture_url && !account.avatar_url) {
+              await supabase.from('social_accounts').update({ avatar_url: d.profile_picture_url }).eq('id', account.id);
+            }
+          }
         }
       }
       if (account.platform === 'youtube' && account.access_token) {
