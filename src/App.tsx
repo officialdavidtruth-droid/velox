@@ -13,7 +13,6 @@ import LeadFinder from './components/LeadFinder';
 import ReferralCenter from './components/ReferralCenter';
 import BillingManager from './components/BillingManager';
 import ClientPortalView from './components/ClientPortalView';
-import PropertyManager from './components/PropertyManager';
 import AccountConnector from './components/AccountConnector';
 import RoasAnalytics from './components/RoasAnalytics';
 import Dashboard from './components/Dashboard';
@@ -109,6 +108,7 @@ export default function App() {
   const [isMobileMenu, setIsMobileMenu] = useState(false);
   const [isNewWsModal, setIsNewWsModal] = useState(false);
   const [wsDropOpen,   setWsDropOpen]   = useState(false);
+  const [profileDropOpen, setProfileDropOpen] = useState(false);
   const [newWsName, setNewWsName] = useState('');
 
   useEffect(() => {
@@ -654,17 +654,25 @@ export default function App() {
               </div>
             )}
           </div>
-          <div className="relative group cursor-pointer hidden sm:block">
-            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold gradient-primary">{user.name?.charAt(0) || 'U'}</div>
-            <div className="hidden group-hover:block absolute right-0 top-9 pt-2 z-50">
-              <div className="rounded-xl shadow-lg py-1 w-36 border" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                <div className="px-3 py-1.5 text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>{user.name}</div>
+          <div className="relative hidden sm:block">
+            {profileDropOpen && <div className="fixed inset-0 z-40" onClick={() => setProfileDropOpen(false)}/>}
+            <button onClick={() => setProfileDropOpen(o => !o)}
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold gradient-primary cursor-pointer">
+              {user.name?.charAt(0) || 'U'}
+            </button>
+            {profileDropOpen && (
+              <div className="absolute right-0 top-9 z-50 rounded-xl shadow-xl py-1 w-44 border"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className="px-3 py-2 text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>{user.name}</div>
+                <div className="px-3 pb-1 text-[10px] truncate" style={{ color: 'var(--muted)' }}>{user.email}</div>
                 <div className="border-t my-1" style={{ borderColor: 'var(--border)' }}/>
-                <button onClick={handleLogout} className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-1.5 font-semibold" style={{ color: 'var(--danger)' }}>
+                <button onClick={() => { setProfileDropOpen(false); handleLogout(); }}
+                  className="w-full text-left px-3 py-2 text-xs flex items-center gap-1.5 font-semibold transition-all hover:opacity-80 cursor-pointer"
+                  style={{ color: 'var(--danger)' }}>
                   <LogOut size={11}/> Sign out
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </header>
@@ -683,7 +691,6 @@ export default function App() {
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Growth</p>
           {nav('leads', 'Lead Finder', <Zap size={13}/>)}
           {nav('pipeline', 'Lead Pipeline', <PieChart size={13}/>)}
-          {nav('pms', 'Client Manager', <Building size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Workspace</p>
           {nav('accounts-connector', 'Connect Accounts', <Link size={13}/>)}
           {nav('referrals', 'Referrals', <Gift size={13}/>)}
@@ -706,9 +713,7 @@ export default function App() {
             {currentView === 'leads' && <LeadFinder workspaceId={activeWorkspace.id}/>}
             {currentView === 'pipeline' && <LeadPipeline workspaceId={activeWorkspace.id}/>}
             {currentView === 'accounts-connector' && <AccountConnector workspaceId={activeWorkspace.id}/>}
-            {currentView === 'pms' && <PropertyManager workspaceId={activeWorkspace.id} isOffline={!isOnline} onAddPostToCalendar={(post: any) => {
-              api.post('/api/posts', { workspace_id: activeWorkspace.id, title: post.title, description: post.description, platforms: post.platforms, cta: 'None', publish_date: new Date(Date.now() + post.delayHours*3600000).toISOString() }).then(() => { loadDashboard(); setCurrentView('calendar'); });
-            }}/>}
+
             {currentView === 'referrals' && <ReferralCenter onRefreshSubscription={loadDashboard}/>}
             {currentView === 'billing' && subscription && <BillingManager subscription={subscription} onRefresh={loadDashboard}/>}
           </main>

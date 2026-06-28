@@ -447,13 +447,121 @@ app.post('/api/analytics/sync', async (req, res) => {
   for (const account of accounts) {
     try {
       let metrics: any = null;
-      if (account.platform === 'facebook' && account.access_token) {
-        const r = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/insights?metric=page_fans,page_impressions,page_reach,page_post_engagements&period=day&access_token=${account.access_token}`);
-        const d: any = await r.json();
-        if (d.data) {
-          const byMetric: any = {};
-          d.data.forEach((m: any) => { byMetric[m.name] = m.values?.slice(-1)[0]?.value || 0; });
-          metrics = { followers: byMetric.page_fans || 0, impressions: byMetric.page_impressions || 0, reach: byMetric.page_reach || 0, engagement: byMetric.page_post_engagements || 0 };
+      if ((account.platform === 'facebook' || account.platform === 'meta_ads') && account.access_token) {
+
+        // ── Meta Ads account (handle starts with act_) ─────────────────────
+        if (account.handle?.startsWith('act_') || account.platform === 'meta_ads') {
+          try {
+            // Get 30-day ad insights: spend, impressions, clicks, reach, conversions
+            const insR = await fetch(
+              `https://graph.facebook.com/v18.0/${account.handle}/insights?fields=spend,impressions,clicks,reach,actions&date_preset=last_30d&access_token=${account.access_token}`
+            );
+            const insD: any = await insR.json();
+            if (insD.data?.[0] && !insD.error) {
+              const ins = insD.data[0];
+              const actions = ins.actions || [];
+              const conversions = actions.find((a: any) =>
+                ['purchase','lead','complete_registration','offsite_conversion.fb_pixel_lead'].includes(a.action_type)
+              )?.value || 0;
+              metrics = {
+                followers: 0,
+                reach:       parseInt(ins.reach       || '0'),
+                impressions: parseInt(ins.impressions  || '0'),
+                clicks:      parseInt(ins.clicks       || '0'),
+                engagement:  parseInt(conversions),
+                profile_visits: 0,
+              };
+            } else {
+              // Fallback: at minimum mark as synced with zero metrics
+              const acctR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}?fields=name,account_status&access_token=${account.access_token}`);
+              const acctD: any = await acctR.json();
+              if (!acctD.error) {
+                metrics = { followers: 0, reach: 0, impressions: 0, engagement: 0, clicks: 0, profile_visits: 0 };
+                if (acctD.name) await supabase.from('social_accounts').update({ account_name: acctD.name }).eq('id', account.id);
+              }
+            }
+          } catch (_) {}
+        }
+
+        // ── Facebook Page account ───────────────────────────────────────────
+        if (!metrics) {
+          try {
+            // Step 1: Get page basic info (fan_count = followers)
+            const pageR = await fetch(
+              `https://graph.facebook.com/v18.0/${account.handle}?fields=name,fan_count,followers_count,picture&access_token=${account.access_token}`
+            );
+            const pageD: any = await pageR.json();
+            if (pageD.fan_count !== undefined && !pageD.error) {
+              metrics = {
+                followers:     pageD.fan_count || pageD.followers_count || 0,
+                reach:         0, impressions: 0, engagement: 0, clicks: 0, profile_visits: 0,
+              };
+              if (pageD.picture?.data?.url) {
+                await supabase.from('social_accounts').update({ avatar_url: pageD.picture.data.url, account_name: pageD.name }).eq('id', account.id);
+              }
+              // Step 2: Get page insights on top of fan_count
+              const insR = await fetch(
+                `https://graph.facebook.com/v18.0/${account.handle}/insights?metric=page_impressions,page_reach,page_post_engagements,page_views_total&period=day&since=${Math.floor((Date.now()-30*86400000)/1000)}&access_token=${account.access_token}`
+              );
+              const insD: any = await insR.json();
+              if (insD.data && !insD.error) {
+                const byMetric: any = {};
+                insD.data.forEach((m: any) => {
+                  const total = (m.values || []).reduce((s: number, v: any) => s + (v.value || 0), 0);
+                  byMetric[m.name] = total;
+                });
+                metrics.impressions    = byMetric.page_impressions    || 0;
+                metrics.reach          = byMetric.page_reach          || 0;
+                metrics.engagement     = byMetric.page_post_engagements || 0;
+                metrics.profile_visits = byMetric.page_views_total    || 0;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // ── Fallback: resolve via me/accounts (user token with linked pages) ─
+        if (!metrics) {
+          try {
+            const pagesR = await fetch(`https://graph.facebook.com/v18.0/me/accounts?fields=id,name,fan_count,access_token,picture&access_token=${account.access_token}`);
+            const pagesD: any = await pagesR.json();
+            const pages = pagesD.data || [];
+            if (pages.length > 0) {
+              const page = pages[0];
+              const pageToken = page.access_token || account.access_token;
+              metrics = { followers: page.fan_count || 0, reach: 0, impressions: 0, engagement: 0, clicks: 0, profile_visits: 0 };
+              if (page.picture?.data?.url) {
+                await supabase.from('social_accounts').update({
+                  handle: page.id, account_name: page.name, avatar_url: page.picture.data.url
+                }).eq('id', account.id);
+              } else {
+                await supabase.from('social_accounts').update({ handle: page.id, account_name: page.name }).eq('id', account.id);
+              }
+              // Try page insights with page token
+              const insR = await fetch(
+                `https://graph.facebook.com/v18.0/${page.id}/insights?metric=page_impressions,page_reach,page_post_engagements&period=day&since=${Math.floor((Date.now()-30*86400000)/1000)}&access_token=${pageToken}`
+              );
+              const insD: any = await insR.json();
+              if (insD.data && !insD.error) {
+                const byM: any = {};
+                insD.data.forEach((m: any) => { byM[m.name] = (m.values||[]).reduce((s:number,v:any)=>s+(v.value||0),0); });
+                metrics.impressions = byM.page_impressions || 0;
+                metrics.reach       = byM.page_reach       || 0;
+                metrics.engagement  = byM.page_post_engagements || 0;
+              }
+            }
+          } catch (_) {}
+        }
+
+        // ── Absolute last resort: mark as connected with zero metrics ────────
+        if (!metrics) {
+          try {
+            const meR = await fetch(`https://graph.facebook.com/v18.0/me?fields=id,name&access_token=${account.access_token}`);
+            const meD: any = await meR.json();
+            if (!meD.error) {
+              metrics = { followers: 0, reach: 0, impressions: 0, engagement: 0, clicks: 0, profile_visits: 0 };
+              if (meD.name) await supabase.from('social_accounts').update({ account_name: meD.name }).eq('id', account.id);
+            }
+          } catch (_) {}
         }
       }
       if (account.platform === 'instagram' && account.access_token) {
