@@ -49,9 +49,12 @@ export default function LeadFinder({ workspaceId }: LeadFinderProps) {
   // Shop state
   const [buyMsg, setBuyMsg] = useState('');
 
+  const token = localStorage.getItem('velox_token') || '';
+  const authHeader = { 'Content-Type': 'application/json', 'x-session-token': token };
+
   const fetchCreditsData = async () => {
     try {
-      const res = await fetch('/api/credits/history');
+      const res = await fetch('/api/credits/history', { headers: { 'x-session-token': token } });
       if (res.ok) {
         const data = await res.json();
         setCredits(data.balance);
@@ -77,7 +80,7 @@ export default function LeadFinder({ workspaceId }: LeadFinderProps) {
     try {
       const res = await fetch('/api/leads/search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeader,
         body: JSON.stringify({ keyword, location, workspaceId })
       });
       const data = await res.json();
@@ -99,7 +102,7 @@ export default function LeadFinder({ workspaceId }: LeadFinderProps) {
     try {
       const res = await fetch('/api/credits/purchase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeader,
         body: JSON.stringify({ packageId: pkgId })
       });
       if (res.ok) {
