@@ -132,6 +132,17 @@ export default function AccountConnector({ workspaceId }: AccountConnectorProps)
       cardBg: 'bg-blue-700/5 dark:bg-blue-700/10',
       desc: 'Connect your LinkedIn company page for impressions and follower data.',
     },
+    {
+      key: 'youtube',
+      label: 'Google / YouTube',
+      sub: 'Analytics + YT API',
+      icon: <Youtube className="w-4 h-4" />,
+      iconBg: 'bg-red-600',
+      btn: 'bg-red-600 hover:bg-red-700',
+      border: 'border-red-500/20',
+      cardBg: 'bg-red-500/5 dark:bg-red-500/10',
+      desc: 'Required for Website Analytics (GA4) and YouTube channel stats.',
+    },
   ];
 
   const getPlatformIcon = (platform: string) => {
