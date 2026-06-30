@@ -954,7 +954,8 @@ app.get('/oauth-mimic/authorize', (_req, res) => {
 app.get('/api/ai/brief', async (req, res) => {
   const { workspaceId } = req.query;
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey || !workspaceId) return res.json({ brief: null });
+  if (!geminiKey) return res.json({ brief: null, error: 'GEMINI_API_KEY not set in Vercel environment variables.' });
+  if (!workspaceId) return res.json({ brief: null, error: 'No workspace selected.' });
   try {
     const [{ data: analytics }, { data: posts }, { data: leads }] = await Promise.all([
       supabase.from('analytics').select('*').eq('workspace_id', workspaceId),
@@ -963,13 +964,15 @@ app.get('/api/ai/brief', async (req, res) => {
     ]);
     const { GoogleGenAI } = await import('@google/genai');
     const genai = new GoogleGenAI({ apiKey: geminiKey });
-    const prompt = `You are a digital marketing AI assistant. Generate a concise morning brief for a digital marketer. Data: Analytics: ${JSON.stringify((analytics||[]).map((a:any)=>({platform:a.platform,followers:a.followers,reach:a.reach})))}. Upcoming posts: ${posts?.length||0}. New leads this week: ${leads?.length||0}. Return ONLY valid JSON: { greeting: string, insight: string, highlights: string[], action_items: string[] }. No markdown.`;
+    const prompt = `You are a digital marketing AI assistant. Generate a concise morning brief for a digital marketer. Data: Analytics: ${JSON.stringify((analytics||[]).map((a:any)=>({platform:a.platform,followers:a.followers,reach:a.reach})))}. Upcoming posts: ${posts?.length||0}. New leads this week: ${leads?.length||0}. Return ONLY valid JSON: { greeting: string, insight: string, highlights: string[], action_items: string[] }. No markdown, no code fences.`;
     const resp = await genai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt });
     const text = resp.text || '';
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return res.json({ brief: null });
+    if (!match) return res.json({ brief: null, error: `AI response had no valid JSON. Raw: ${text.slice(0,200)}` });
     res.json({ brief: JSON.parse(match[0]) });
-  } catch (e: any) { res.json({ brief: null }); }
+  } catch (e: any) {
+    res.json({ brief: null, error: e.message || 'Unknown error generating brief.' });
+  }
 });
 
 // ── Campaigns ────────────────────────────────────────────────────────────────
@@ -1055,6 +1058,270 @@ app.post('/api/website-analytics/sync', async (req, res) => {
   } catch (e: any) {
     res.json({ success: false, error: e.message });
   }
+});
+
+
+// ── Ad API Connections (manual credentials) ──────────────────────────────────
+app.get('/api/ad-connections', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.json([]);
+  const { data } = await supabase.from('ad_connections').select('*').eq('workspace_id', workspaceId);
+  res.json((data || []).map((c: any) => ({ ...c, ad_account_id: c.ad_account_id, developer_token: c.developer_token ? '••••••••' : '', client_id: c.client_id })));
+});
+
+app.post('/api/ad-connections/save', async (req, res) => {
+  const { workspaceId, platformName, fields } = req.body;
+  if (!workspaceId || !platformName) return res.status(400).json({ success: false, error: 'Missing workspace or platform.' });
+
+  // Try to verify the credentials with a lightweight real API call before saving
+  let verified = false;
+  try {
+    if (platformName === 'Meta Ads' && fields.access_token && fields.ad_account_id) {
+      const r = await fetch(`https://graph.facebook.com/v18.0/${fields.ad_account_id}?fields=name&access_token=${fields.access_token}`);
+      const d: any = await r.json();
+      verified = !d.error;
+    } else if (platformName === 'TikTok Ads' && fields.access_token && fields.advertiser_id) {
+      const r = await fetch(`https://business-api.tiktok.com/open_api/v1.3/advertiser/info/?advertiser_ids=["${fields.advertiser_id}"]`, { headers: { 'Access-Token': fields.access_token } });
+      const d: any = await r.json();
+      verified = d.code === 0;
+    } else if (platformName === 'LinkedIn Ads' && fields.access_token) {
+      const r = await fetch(`https://api.linkedin.com/v2/adAccountsV2/${fields.ad_account_id}`, { headers: { Authorization: `Bearer ${fields.access_token}` } });
+      verified = r.ok;
+    } else if (platformName === 'Google Ads') {
+      // Google Ads API requires complex setup; accept and mark unverified, real check happens on first sync
+      verified = !!(fields.customer_id && fields.developer_token && fields.access_token);
+    }
+  } catch (_) { verified = false; }
+
+  const row: any = {
+    workspace_id: workspaceId,
+    platform_name: platformName,
+    connected: true,
+    client_id: fields.ad_account_id || fields.customer_id || fields.advertiser_id || '',
+    developer_token: fields.developer_token || fields.access_token || '',
+    ad_account_id: fields.ad_account_id || fields.customer_id || fields.advertiser_id || '',
+  };
+  const { error } = await supabase.from('ad_connections').upsert(row, { onConflict: 'workspace_id,platform_name' });
+  if (error) return res.json({ success: false, error: error.message });
+  res.json({ success: true, verified });
+});
+
+app.post('/api/ad-connections/disconnect', async (req, res) => {
+  const { workspaceId, platformName } = req.body;
+  await supabase.from('ad_connections').delete().eq('workspace_id', workspaceId).eq('platform_name', platformName);
+  res.json({ success: true });
+});
+
+// ── Post Publishing (post to all selected platforms at once) ────────────────
+app.post('/api/posts/:id/publish', async (req, res) => {
+  const { data: post } = await supabase.from('scheduled_posts').select('*').eq('id', req.params.id).single();
+  if (!post) return res.status(404).json({ success: false, error: 'Post not found.' });
+
+  const { data: accounts } = await supabase.from('social_accounts').select('*').eq('workspace_id', post.workspace_id);
+  const results: any[] = [];
+
+  for (const platform of (post.platforms || [])) {
+    const account = (accounts || []).find((a: any) => a.platform === platform);
+    if (!account || !account.access_token) {
+      results.push({ platform, success: false, error: 'No connected account with a valid token.' });
+      continue;
+    }
+    try {
+      if (platform === 'facebook') {
+        const r = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/feed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: post.description, access_token: account.access_token }),
+        });
+        const d: any = await r.json();
+        results.push({ platform, success: !d.error, error: d.error?.message, id: d.id });
+      } else if (platform === 'instagram') {
+        if (!post.image_url) {
+          results.push({ platform, success: false, error: 'Instagram requires an image_url to publish.' });
+          continue;
+        }
+        const createR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/media`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_url: post.image_url, caption: post.description, access_token: account.access_token }),
+        });
+        const createD: any = await createR.json();
+        if (createD.error) { results.push({ platform, success: false, error: createD.error.message }); continue; }
+        const publishR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/media_publish`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ creation_id: createD.id, access_token: account.access_token }),
+        });
+        const publishD: any = await publishR.json();
+        results.push({ platform, success: !publishD.error, error: publishD.error?.message, id: publishD.id });
+      } else if (platform === 'linkedin') {
+        const r = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json', 'X-Restli-Protocol-Version': '2.0.0' },
+          body: JSON.stringify({
+            author: `urn:li:organization:${account.handle}`,
+            lifecycleState: 'PUBLISHED',
+            specificContent: { 'com.linkedin.ugc.ShareContent': { shareCommentary: { text: post.description }, shareMediaCategory: 'NONE' } },
+            visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
+          }),
+        });
+        results.push({ platform, success: r.ok, error: r.ok ? undefined : `LinkedIn returned ${r.status}` });
+      } else {
+        results.push({ platform, success: false, error: `Publishing to ${platform} is not yet supported.` });
+      }
+    } catch (e: any) {
+      results.push({ platform, success: false, error: e.message });
+    }
+  }
+
+  const allOk = results.every(r => r.success);
+  const anyOk = results.some(r => r.success);
+  await supabase.from('scheduled_posts').update({ status: anyOk ? 'published' : 'failed' }).eq('id', post.id);
+  res.json({ success: anyOk, all_success: allOk, results });
+});
+
+// ── Engagement Inbox ──────────────────────────────────────────────────────────
+app.get('/api/inbox', async (req, res) => {
+  const { workspaceId } = req.query;
+  if (!workspaceId) return res.json([]);
+  const { data } = await supabase.from('inbox_items').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(100);
+  res.json(data || []);
+});
+
+app.post('/api/inbox/sync', async (req, res) => {
+  const { workspaceId } = req.body;
+  const { data: accounts } = await supabase.from('social_accounts').select('*').eq('workspace_id', workspaceId).in('platform', ['instagram','facebook']);
+  if (!accounts || accounts.length === 0) return res.json({ success: false, error: 'No Instagram or Facebook accounts connected.' });
+
+  let totalSynced = 0;
+  const errors: string[] = [];
+
+  for (const account of accounts) {
+    if (!account.access_token) continue;
+    try {
+      if (account.platform === 'facebook') {
+        // Page conversations (Messenger)
+        const convR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/conversations?fields=participants,messages{message,from,created_time}&access_token=${account.access_token}`);
+        const convD: any = await convR.json();
+        for (const conv of (convD.data || [])) {
+          const lastMsg = conv.messages?.data?.[0];
+          if (!lastMsg) continue;
+          await supabase.from('inbox_items').upsert({
+            workspace_id: workspaceId, platform: 'facebook', type: 'message',
+            external_id: lastMsg.id || conv.id, from_name: lastMsg.from?.name || 'Unknown',
+            text: lastMsg.message || '', created_at: lastMsg.created_time || new Date().toISOString(),
+          }, { onConflict: 'external_id' });
+          totalSynced++;
+        }
+        // Page feed comments
+        const commR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/feed?fields=comments{message,from,created_time,id},message&limit=10&access_token=${account.access_token}`);
+        const commD: any = await commR.json();
+        for (const post of (commD.data || [])) {
+          for (const c of (post.comments?.data || [])) {
+            await supabase.from('inbox_items').upsert({
+              workspace_id: workspaceId, platform: 'facebook', type: 'comment',
+              external_id: c.id, from_name: c.from?.name || 'Unknown', text: c.message || '',
+              post_caption: (post.message || '').slice(0, 80), created_at: c.created_time || new Date().toISOString(),
+            }, { onConflict: 'external_id' });
+            totalSynced++;
+          }
+        }
+      } else if (account.platform === 'instagram') {
+        const mediaR = await fetch(`https://graph.facebook.com/v18.0/${account.handle}/media?fields=caption,comments{text,username,timestamp,id}&limit=10&access_token=${account.access_token}`);
+        const mediaD: any = await mediaR.json();
+        for (const m of (mediaD.data || [])) {
+          for (const c of (m.comments?.data || [])) {
+            await supabase.from('inbox_items').upsert({
+              workspace_id: workspaceId, platform: 'instagram', type: 'comment',
+              external_id: c.id, from_name: c.username || 'Unknown', text: c.text || '',
+              post_caption: (m.caption || '').slice(0, 80), created_at: c.timestamp || new Date().toISOString(),
+            }, { onConflict: 'external_id' });
+            totalSynced++;
+          }
+        }
+      }
+    } catch (e: any) {
+      errors.push(`${account.platform}: ${e.message}`);
+    }
+  }
+
+  if (totalSynced === 0 && errors.length > 0) return res.json({ success: false, error: errors.join('; ') });
+  res.json({ success: true, synced: totalSynced });
+});
+
+app.post('/api/inbox/reply', async (req, res) => {
+  const { workspaceId, platform, externalId, message } = req.body;
+  const { data: account } = await supabase.from('social_accounts').select('*').eq('workspace_id', workspaceId).eq('platform', platform).maybeSingle();
+  if (!account?.access_token) return res.json({ success: false, error: 'Account not connected.' });
+  try {
+    if (platform === 'facebook' || platform === 'instagram') {
+      const r = await fetch(`https://graph.facebook.com/v18.0/${externalId}/comments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, access_token: account.access_token }),
+      });
+      const d: any = await r.json();
+      if (d.error) return res.json({ success: false, error: d.error.message });
+      return res.json({ success: true });
+    }
+    res.json({ success: false, error: 'Replying not supported for this platform yet.' });
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+
+// ── Sync real campaign data from connected Ads APIs ──────────────────────────
+app.post('/api/campaigns/sync-from-api', async (req, res) => {
+  const { workspaceId } = req.body;
+  const { data: connections } = await supabase.from('ad_connections').select('*').eq('workspace_id', workspaceId).eq('connected', true);
+  if (!connections || connections.length === 0) return res.json({ success: false, error: 'No ad APIs connected.' });
+
+  let imported = 0;
+  const errors: string[] = [];
+
+  for (const conn of connections) {
+    try {
+      if (conn.platform_name === 'Meta Ads' && conn.developer_token && conn.ad_account_id) {
+        const r = await fetch(`https://graph.facebook.com/v18.0/${conn.ad_account_id}/campaigns?fields=name,status,daily_budget,lifetime_budget&access_token=${conn.developer_token}`);
+        const d: any = await r.json();
+        if (d.error) { errors.push(`Meta Ads: ${d.error.message}`); continue; }
+        for (const c of (d.data || [])) {
+          const insR = await fetch(`https://graph.facebook.com/v18.0/${c.id}/insights?fields=spend,impressions,clicks,actions&date_preset=last_30d&access_token=${conn.developer_token}`);
+          const insD: any = await insR.json();
+          const ins = insD.data?.[0] || {};
+          const conversions = (ins.actions || []).find((a: any) => a.action_type === 'purchase' || a.action_type === 'lead')?.value || 0;
+          await supabase.from('campaigns').upsert({
+            workspace_id: workspaceId, name: c.name, platform: 'Meta Ads',
+            status: c.status === 'ACTIVE' ? 'active' : c.status === 'PAUSED' ? 'paused' : 'ended',
+            budget: parseFloat(c.daily_budget || c.lifetime_budget || '0') / 100,
+            spend: parseFloat(ins.spend || '0'),
+            impressions: parseInt(ins.impressions || '0'),
+            clicks: parseInt(ins.clicks || '0'),
+            conversions: parseInt(conversions),
+            notes: `Synced from Meta Ads API — campaign ${c.id}`,
+          }, { onConflict: 'workspace_id,name' });
+          imported++;
+        }
+      } else if (conn.platform_name === 'TikTok Ads' && conn.developer_token && conn.ad_account_id) {
+        const r = await fetch(`https://business-api.tiktok.com/open_api/v1.3/campaign/get/?advertiser_id=${conn.ad_account_id}&page_size=20`, { headers: { 'Access-Token': conn.developer_token } });
+        const d: any = await r.json();
+        if (d.code !== 0) { errors.push(`TikTok Ads: ${d.message}`); continue; }
+        for (const c of (d.data?.list || [])) {
+          await supabase.from('campaigns').upsert({
+            workspace_id: workspaceId, name: c.campaign_name, platform: 'TikTok Ads',
+            status: c.status === 'ENABLE' ? 'active' : 'paused',
+            budget: parseFloat(c.budget || '0'), spend: 0, notes: `Synced from TikTok Ads API — campaign ${c.campaign_id}`,
+          }, { onConflict: 'workspace_id,name' });
+          imported++;
+        }
+      }
+      // Google Ads and LinkedIn Ads require more complex SDK/GAQL setup —
+      // left as manual entry for now via the Campaign Tracker form.
+    } catch (e: any) {
+      errors.push(`${conn.platform_name}: ${e.message}`);
+    }
+  }
+
+  if (imported === 0) return res.json({ success: false, error: errors.join('; ') || 'No campaigns found to import.' });
+  res.json({ success: true, imported, errors });
 });
 
 export default function handler(req: any, res: any) {

@@ -41,13 +41,19 @@ export default function Dashboard({ user, workspaceId, analytics, posts, subscri
     setLeads(Array.isArray(l) ? l : []);
   };
 
+  const [briefError, setBriefError] = useState('');
+
   const generateBrief = async () => {
     setBriefLoading(true);
+    setBriefError('');
     try {
       const r = await fetch(`/api/ai/brief?workspaceId=${workspaceId}`, { headers: { 'x-session-token': token } });
       const d = await r.json();
-      setBrief(d.brief);
-    } catch {}
+      if (d.brief) setBrief(d.brief);
+      else setBriefError(d.error || 'Could not generate brief.');
+    } catch (e: any) {
+      setBriefError('Network error generating brief.');
+    }
     setBriefLoading(false);
   };
 
@@ -122,6 +128,13 @@ export default function Dashboard({ user, workspaceId, analytics, posts, subscri
         </div>
 
         {/* AI Brief */}
+        {briefError && (
+          <div className="mt-4 rounded-xl p-3 flex items-start gap-2"
+            style={{ background: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <AlertCircle size={13} className="mt-0.5 shrink-0" style={{ color: 'var(--warning)' }}/>
+            <p className="text-xs" style={{ color: 'var(--warning)' }}>{briefError}</p>
+          </div>
+        )}
         {brief && (
           <div className="mt-4 rounded-xl p-4 space-y-3"
             style={{ background: 'var(--primary-soft)', border: '1px solid var(--primary-l)' }}>

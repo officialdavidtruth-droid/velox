@@ -127,6 +127,34 @@ export default function CalendarView({ workspaceId, posts, onRefresh, isOffline 
     onRefresh();
   };
 
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [publishMsg, setPublishMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
+
+  const publishNow = async (postId: string) => {
+    setPublishingId(postId);
+    setPublishMsg(null);
+    try {
+      const res = await fetch(`/api/posts/${postId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': localStorage.getItem('velox_token') || '' },
+      });
+      const d = await res.json();
+      const failed = (d.results || []).filter((r: any) => !r.success);
+      if (d.all_success) {
+        setPublishMsg({ id: postId, text: 'Published to all platforms!', ok: true });
+      } else if (d.success) {
+        setPublishMsg({ id: postId, text: `Partial: ${failed.map((f: any) => `${f.platform} failed (${f.error})`).join(', ')}`, ok: false });
+      } else {
+        setPublishMsg({ id: postId, text: failed[0]?.error || d.error || 'Publish failed.', ok: false });
+      }
+      onRefresh();
+    } catch {
+      setPublishMsg({ id: postId, text: 'Network error publishing.', ok: false });
+    }
+    setPublishingId(null);
+    setTimeout(() => setPublishMsg(null), 6000);
+  };
+
   // Helper values for Month calendar render
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -382,6 +410,21 @@ export default function CalendarView({ workspaceId, posts, onRefresh, isOffline 
                     <Clock className="w-3" />
                     <span>{new Date(p.publish_date).toLocaleDateString()} {new Date(p.publish_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
+
+                  {p.status !== 'published' && (
+                    <button
+                      onClick={() => publishNow(p.id)}
+                      disabled={publishingId === p.id}
+                      className="mt-2 w-full text-[10px] font-bold py-1.5 rounded-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      {publishingId === p.id ? 'Publishing…' : `Publish Now to ${p.platforms.length} platform${p.platforms.length > 1 ? 's' : ''}`}
+                    </button>
+                  )}
+                  {publishMsg && publishMsg.id === p.id && (
+                    <p className={`mt-1.5 text-[9px] leading-relaxed ${publishMsg.ok ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {publishMsg.text}
+                    </p>
+                  )}
 
                   <div className="opacity-0 group-hover:opacity-100 bg-white/95 absolute inset-x-0 bottom-0 p-2 flex items-center justify-around border-t border-slate-200 transition-opacity rounded-b-sm">
                     <button

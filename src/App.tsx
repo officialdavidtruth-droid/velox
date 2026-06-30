@@ -19,6 +19,8 @@ import Dashboard from './components/Dashboard';
 import CampaignTracker from './components/CampaignTracker';
 import LeadPipeline from './components/LeadPipeline';
 import WebsiteAnalytics from './components/WebsiteAnalytics';
+import AdsApiConnector from './components/AdsApiConnector';
+import EngagementInbox from './components/EngagementInbox';
 
 // ── API helper with timeout + error handling ────────────────────────────────
 const TIMEOUT_MS = 12000;
@@ -685,12 +687,14 @@ export default function App() {
           {nav('analytics', 'Social Analytics', <TrendingUp size={13}/>)}
           {nav('website', 'Website Analytics', <Globe size={13}/>)}
           {nav('campaigns', 'Campaign Tracker', <Target size={13}/>)}
+          {nav('ads-api', 'Ads API Connections', <Link size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Content</p>
           {nav('calendar', 'Content Calendar', <Calendar size={13}/>)}
           {nav('copywriter', 'AI Captions', <Sparkles size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Growth</p>
           {nav('leads', 'Lead Finder', <Zap size={13}/>)}
           {nav('pipeline', 'Lead Pipeline', <PieChart size={13}/>)}
+          {nav('inbox', 'Engagement Inbox', <Bell size={13}/>)}
           <p className="text-[9px] font-black uppercase tracking-widest px-3 pt-3 pb-1" style={{ color: 'var(--muted)' }}>Workspace</p>
           {nav('accounts-connector', 'Connect Accounts', <Link size={13}/>)}
           {nav('referrals', 'Referrals', <Gift size={13}/>)}
@@ -708,10 +712,12 @@ export default function App() {
             {currentView === 'analytics' && <AnalyticsView workspaceId={activeWorkspace.id} analytics={analyticsData} history={analyticsHistory} onRefresh={loadDashboard}/>}
             {currentView === 'website' && <WebsiteAnalytics workspaceId={activeWorkspace.id}/>}
             {currentView === 'campaigns' && <CampaignTracker workspaceId={activeWorkspace.id}/>}
+            {currentView === 'ads-api' && <AdsApiConnector workspaceId={activeWorkspace.id}/>}
             {currentView === 'calendar' && <CalendarView workspaceId={activeWorkspace.id} posts={posts} onRefresh={loadDashboard} isOffline={!isOnline}/>}
             {currentView === 'copywriter' && <CaptionGenerator workspaceId={activeWorkspace.id} onPostScheduled={loadDashboard}/>}
             {currentView === 'leads' && <LeadFinder workspaceId={activeWorkspace.id}/>}
             {currentView === 'pipeline' && <LeadPipeline workspaceId={activeWorkspace.id}/>}
+            {currentView === 'inbox' && <EngagementInbox workspaceId={activeWorkspace.id}/>}
             {currentView === 'accounts-connector' && <AccountConnector workspaceId={activeWorkspace.id}/>}
 
             {currentView === 'referrals' && <ReferralCenter onRefreshSubscription={loadDashboard}/>}

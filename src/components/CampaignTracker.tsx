@@ -22,6 +22,8 @@ export default function CampaignTracker({ workspaceId }: CampaignTrackerProps) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [apiSyncing, setApiSyncing] = useState(false);
+  const [apiSyncMsg, setApiSyncMsg] = useState<{text:string, ok:boolean} | null>(null);
   const [editId, setEditId] = useState<string|null>(null);
   const [form, setForm] = useState({
     name: '', platform: 'Meta Ads', status: 'active',
@@ -39,6 +41,25 @@ export default function CampaignTracker({ workspaceId }: CampaignTrackerProps) {
     const d = await r.json();
     setCampaigns(Array.isArray(d) ? d : []);
     setLoading(false);
+  };
+
+  const syncFromApi = async () => {
+    setApiSyncing(true);
+    setApiSyncMsg(null);
+    try {
+      const r = await fetch('/api/campaigns/sync-from-api', { method:'POST', headers:h, body: JSON.stringify({ workspaceId }) });
+      const d = await r.json();
+      if (d.success) {
+        setApiSyncMsg({ text: `Imported ${d.imported} campaign${d.imported!==1?'s':''} from connected ad APIs.${d.errors?.length ? ' Some issues: '+d.errors.join('; ') : ''}`, ok: true });
+        load();
+      } else {
+        setApiSyncMsg({ text: d.error || 'No campaigns synced. Make sure you have connected Ads API credentials under Ads API Connections.', ok: false });
+      }
+    } catch {
+      setApiSyncMsg({ text: 'Network error syncing from API.', ok: false });
+    }
+    setApiSyncing(false);
+    setTimeout(() => setApiSyncMsg(null), 8000);
   };
 
   const resetForm = () => {
@@ -136,18 +157,32 @@ export default function CampaignTracker({ workspaceId }: CampaignTrackerProps) {
     <div className="space-y-5 max-w-7xl">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold" style={{ color:'var(--text)' }}>Campaign Tracker</h1>
           <p className="text-xs mt-0.5" style={{ color:'var(--muted)' }}>
             Track ad spend, ROAS, and performance across all platforms
           </p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl font-semibold text-white gradient-primary">
-          <Plus size={13}/> New Campaign
-        </button>
+        <div className="flex gap-2">
+          <button onClick={syncFromApi} disabled={apiSyncing}
+            className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl font-semibold transition-all disabled:opacity-50"
+            style={{ background:'var(--surface)', color:'var(--text)', border:'1px solid var(--border)' }}>
+            <RefreshCw size={13} className={apiSyncing ? 'animate-spin' : ''}/> {apiSyncing ? 'Syncing…' : 'Sync from API'}
+          </button>
+          <button onClick={() => { resetForm(); setShowForm(true); }}
+            className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl font-semibold text-white gradient-primary">
+            <Plus size={13}/> New Campaign
+          </button>
+        </div>
       </div>
+      {apiSyncMsg && (
+        <div className="rounded-xl p-3 text-xs"
+          style={{ background: apiSyncMsg.ok ? 'var(--success-bg)' : 'var(--warning-bg)', color: apiSyncMsg.ok ? 'var(--success)' : 'var(--warning)' }}>
+          {apiSyncMsg.text}
+        </div>
+      )}
+
 
       {/* KPI Row */}
       {campaigns.length > 0 && (
