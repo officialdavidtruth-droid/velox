@@ -225,7 +225,7 @@ app.get('/api/social-accounts/oauth/url', async (req, res) => {
   if (p === 'google' || p === 'youtube' || p === 'google_ads') {
     const clientId = process.env.VITE_GOOGLE_CLIENT_ID || '';
     if (clientId) {
-      return res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redir)}&scope=https://www.googleapis.com/auth/youtube.readonly+https://www.googleapis.com/auth/yt-analytics.readonly&state=${state}&response_type=code&access_type=offline&prompt=consent` });
+      return res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redir)}&scope=https://www.googleapis.com/auth/youtube.readonly+https://www.googleapis.com/auth/yt-analytics.readonly+https://www.googleapis.com/auth/analytics.readonly&state=${state}&response_type=code&access_type=offline&prompt=consent` });
     }
     return res.json({ error: 'VITE_GOOGLE_CLIENT_ID not set in Vercel environment variables.' });
   }
@@ -1030,14 +1030,31 @@ app.post('/api/website-analytics/connect', async (req, res) => {
 app.post('/api/website-analytics/sync', async (req, res) => {
   const { workspaceId } = req.body;
   const { data: account } = await supabase.from('social_accounts').select('*').eq('workspace_id', workspaceId).eq('platform', 'ga4').maybeSingle();
-  if (!account?.handle) return res.json({ success: false, error: 'No GA4 property connected' });
-  if (!account.access_token) return res.json({ success: false, error: 'No Google access token' });
+  if (!account?.handle) return res.json({ success: false, error: 'No GA4 property connected.' });
+  if (!account.access_token) return res.json({ success: false, error: 'No Google access token stored. Reconnect Google from Connect Accounts.' });
   try {
-    const r = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${account.handle}:runReport`, { method: 'POST', headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }], metrics: [{ name:'sessions' },{ name:'activeUsers' },{ name:'newUsers' },{ name:'bounceRate' },{ name:'averageSessionDuration' },{ name:'conversions' }], dimensions: [{ name:'sessionDefaultChannelGrouping' }] }) });
+    const r = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${account.handle}:runReport`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${account.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        metrics: [{ name:'sessions' },{ name:'activeUsers' },{ name:'newUsers' },{ name:'bounceRate' },{ name:'averageSessionDuration' },{ name:'conversions' }],
+        dimensions: [{ name:'sessionDefaultChannelGrouping' }],
+      }),
+    });
     const d: any = await r.json();
-    if (d.error) return res.json({ success: false, error: d.error.message });
+    if (d.error) {
+      const code = d.error.code;
+      let friendly = d.error.message || 'GA4 request failed.';
+      if (code === 401) friendly = 'Google access token expired. Go to Connect Accounts and reconnect Google.';
+      else if (code === 403) friendly = `Permission denied on property ${account.handle}. Make sure the Google account you connected has Viewer access to this GA4 property, and that the Analytics scope was granted (reconnect Google if you connected before this feature existed).`;
+      else if (code === 400 && /Property/.test(friendly)) friendly = `Property ID "${account.handle}" looks invalid. Double check it in GA4 → Admin → Property Settings.`;
+      return res.json({ success: false, error: friendly });
+    }
     res.json({ success: true, data: d.rows || [] });
-  } catch (e: any) { res.json({ success: false, error: e.message }); }
+  } catch (e: any) {
+    res.json({ success: false, error: e.message });
+  }
 });
 
 export default function handler(req: any, res: any) {

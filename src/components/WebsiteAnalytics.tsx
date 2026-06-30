@@ -22,6 +22,8 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
   const [syncing, setSyncing] = useState(false);
   const [copied, setCopied] = useState<string|null>(null);
   const [tab, setTab] = useState<'overview'|'utm'>('overview');
+  const [syncError, setSyncError] = useState('');
+  const [hasGoogleAccount, setHasGoogleAccount] = useState(false);
   const token = localStorage.getItem('velox_token') || '';
   const h = { 'Content-Type': 'application/json', 'x-session-token': token };
 
@@ -42,7 +44,10 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
   const checkGA4 = async () => {
     const r = await fetch(`/api/social-accounts?workspaceId=${workspaceId}`, { headers: h });
     const d = await r.json();
-    const ga4 = (Array.isArray(d) ? d : []).find((a: any) => a.platform === 'ga4');
+    const list = Array.isArray(d) ? d : [];
+    const ga4 = list.find((a: any) => a.platform === 'ga4');
+    const google = list.find((a: any) => (a.platform === 'youtube' || a.platform === 'google') && a.access_token);
+    setHasGoogleAccount(!!google);
     if (ga4) { setGa4Connected(true); setPropertyId(ga4.handle || ''); }
   };
 
@@ -84,24 +89,41 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
 
   const connectGA4 = async () => {
     if (!propertyId) return;
-    setConnecting(true);
-    // Store GA4 property ID — user must have Google OAuth done already
+    setSyncError('');
     const accounts = await fetch(`/api/social-accounts?workspaceId=${workspaceId}`, { headers:h }).then(r=>r.json());
-    const google = (Array.isArray(accounts) ? accounts : []).find((a: any) => a.platform === 'youtube' || a.platform === 'google');
+    const google = (Array.isArray(accounts) ? accounts : []).find((a: any) => (a.platform === 'youtube' || a.platform === 'google') && a.access_token);
+    if (!google?.access_token) {
+      setSyncError('No Google account connected. Go to Connect Accounts and connect Google/YouTube first — VeloxSpace needs that OAuth token to read your GA4 property.');
+      return;
+    }
+    setConnecting(true);
     await fetch('/api/website-analytics/connect', {
       method:'POST', headers:h,
-      body:JSON.stringify({ workspaceId, propertyId, accessToken: google?.access_token || '' })
+      body:JSON.stringify({ workspaceId, propertyId, accessToken: google.access_token })
     });
     setGa4Connected(true);
+    setHasGoogleAccount(true);
     setConnecting(false);
     syncGA4();
   };
 
   const syncGA4 = async () => {
     setSyncing(true);
-    const r = await fetch('/api/website-analytics/sync', { method:'POST', headers:h, body:JSON.stringify({ workspaceId }) });
-    const d = await r.json();
-    if (d.success && d.data) setGa4Data(d.data);
+    setSyncError('');
+    try {
+      const r = await fetch('/api/website-analytics/sync', { method:'POST', headers:h, body:JSON.stringify({ workspaceId }) });
+      const d = await r.json();
+      if (d.success) {
+        setGa4Data(d.data || []);
+        if (!d.data || d.data.length === 0) {
+          setSyncError('Connected successfully, but GA4 returned no data — this can mean no traffic in the last 30 days, or the property ID is wrong.');
+        }
+      } else {
+        setSyncError(d.error || 'Sync failed — unknown error.');
+      }
+    } catch (e: any) {
+      setSyncError('Network error while syncing GA4.');
+    }
     setSyncing(false);
   };
 
@@ -200,6 +222,15 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
               </div>
             )}
           </div>
+
+          {/* Error / warning banner */}
+          {syncError && (
+            <div className="rounded-2xl p-4 flex items-start gap-3"
+              style={{ background:'var(--warning-bg)', border:'1px solid rgba(245,158,11,0.3)' }}>
+              <span className="text-base shrink-0">⚠️</span>
+              <p className="text-xs leading-relaxed" style={{ color:'var(--warning)' }}>{syncError}</p>
+            </div>
+          )}
 
           {/* KPI Cards */}
           {ga4Data.length > 0 && (
