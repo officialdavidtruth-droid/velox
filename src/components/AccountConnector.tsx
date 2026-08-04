@@ -235,6 +235,9 @@ export default function AccountConnector({ workspaceId }: AccountConnectorProps)
           <h3 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text)' }}>
             Connect a Platform
           </h3>
+          <p className="text-[10px] leading-relaxed rounded-lg p-2.5" style={{ color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            💡 To connect a <em>different</em> account than the one you're already logged into on that platform, log out of it in your browser (or use a private/incognito window) before clicking Connect — otherwise it'll re-link the account you're already signed into.
+          </p>
           {PLATFORMS.map(p => (
             <div key={p.key}
               className={`rounded-xl p-4 border ${p.border} ${p.cardBg} flex flex-col gap-3 transition-all hover:shadow-md`}>
