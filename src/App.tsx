@@ -793,7 +793,7 @@ export default function App() {
             {currentView === 'ads-api' && <AdsApiConnector workspaceId={activeWorkspace.id}/>}
             {currentView === 'calendar' && <CalendarView workspaceId={activeWorkspace.id} posts={posts} onRefresh={loadDashboard} isOffline={!isOnline}/>}
             {currentView === 'copywriter' && <CaptionGenerator workspaceId={activeWorkspace.id} onPostScheduled={loadDashboard}/>}
-            {currentView === 'leads' && <LeadFinder workspaceId={activeWorkspace.id}/>}
+            {currentView === 'leads' && <LeadFinder workspaceId={activeWorkspace.id} onNavigate={navigateTo}/>}
             {currentView === 'pipeline' && <LeadPipeline workspaceId={activeWorkspace.id}/>}
             {currentView === 'crm' && <CRM workspaceId={activeWorkspace.id}/>}
             {currentView === 'inbox' && <EngagementInbox workspaceId={activeWorkspace.id}/>}

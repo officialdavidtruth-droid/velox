@@ -63,11 +63,11 @@
 
 /* ── Base ────────────────────────────────────────────────────── */
 html, body {
-  min-height: 100vh;
+  height: 100%;
   font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
-  overflow-x: hidden;
+  overflow: hidden;
   max-width: 100vw;
 }
 
@@ -169,7 +169,7 @@ input:-webkit-autofill:focus {
 }
 
 /* ── Layout fixes ────────────────────────────────────────────── */
-#root { overflow-x: hidden; max-width: 100vw; }
+#root { height: 100%; overflow: hidden; max-width: 100vw; }
 aside { min-width: 0; overflow-x: hidden; }
 
 /* Fix: buttons/inputs always clickable */

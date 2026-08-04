@@ -20,6 +20,8 @@ export default function LeadPipeline({ workspaceId }: LeadPipelineProps) {
   const [deletingId, setDeletingId] = useState<string|null>(null);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [clearing, setClearing]   = useState(false);
+  const [page, setPage]           = useState(0);
+  const PAGE_SIZE = 5;
   const h = { 'Content-Type': 'application/json', 'x-session-token': localStorage.getItem('velox_token') || '' };
 
   useEffect(() => { load(); }, [workspaceId]);
@@ -71,6 +73,10 @@ export default function LeadPipeline({ workspaceId }: LeadPipelineProps) {
   const convRate  = leads.length > 0 ? ((totalWon / leads.length) * 100).toFixed(0) : '0';
   const avgScore  = leads.length > 0 ? Math.round(leads.reduce((s, l) => s + (l.confidence_score || 0), 0) / leads.length) : 0;
   const displayed = filter === 'all' ? leads : leads.filter(l => (l.status || 'new') === filter);
+
+  useEffect(() => { setPage(0); }, [filter, leads.length]);
+  const totalPages = Math.max(1, Math.ceil(displayed.length / PAGE_SIZE));
+  const pageLeads   = displayed.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -224,6 +230,81 @@ export default function LeadPipeline({ workspaceId }: LeadPipelineProps) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── All Leads — full detail, paginated 5-per-page ── */}
+      {leads.length > 0 && (
+        <div className="glow-card rounded-2xl overflow-hidden">
+          <div className="px-5 py-4 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <h4 className="text-sm font-bold" style={{ color: 'var(--text)' }}>All Leads</h4>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--muted)' }}>
+                {displayed.length} lead{displayed.length !== 1 ? 's' : ''}{filter !== 'all' ? ` · ${STAGES.find(s => s.key === filter)?.label}` : ''} · showing {displayed.length === 0 ? 0 : page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, displayed.length)}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {pageLeads.map(lead => (
+              <div key={lead.id} className="rounded-2xl p-4 cursor-pointer transition-all hover:shadow-md"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+                onClick={() => setSelected(lead)}>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="min-w-0">
+                    <h5 className="font-black text-sm truncate" style={{ color: 'var(--text)' }}>{lead.business_name}</h5>
+                    {lead.address && <p className="text-[10px] mt-0.5 flex items-center gap-1 truncate" style={{ color: 'var(--muted)' }}><MapPin size={9}/>{lead.address}</p>}
+                    {lead.category && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full mt-1 inline-block capitalize" style={{ background: 'var(--primary-soft)', color: 'var(--primary)' }}>{lead.category}</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {(() => { const sm = STAGES.find(s => s.key === (lead.status || 'new')) || STAGES[0]; return (
+                      <span className="text-[9px] font-bold px-2 py-1 rounded-full" style={{ background: sm.bg, color: sm.color }}>{sm.label}</span>
+                    ); })()}
+                    <button onClick={e => deleteLead(lead.id, e)} disabled={deletingId === lead.id} title="Delete"
+                      className="p-1.5 rounded-lg cursor-pointer" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+                      {deletingId === lead.id ? <RefreshCw size={11} className="animate-spin"/> : <Trash2 size={11}/>}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-xl p-2.5" style={{ background: 'var(--card)' }}>
+                    <p className="text-[9px] font-bold uppercase mb-1 flex items-center gap-1" style={{ color: 'var(--muted)' }}><Phone size={8}/>Phone</p>
+                    {lead.phone ? <a href={`tel:${lead.phone}`} onClick={e => e.stopPropagation()} className="text-[10px] font-semibold hover:underline block truncate" style={{ color: 'var(--primary)' }}>{lead.phone}</a>
+                      : <p className="text-[10px]" style={{ color: 'var(--muted)' }}>—</p>}
+                  </div>
+                  <div className="rounded-xl p-2.5" style={{ background: 'var(--card)' }}>
+                    <p className="text-[9px] font-bold uppercase mb-1 flex items-center gap-1" style={{ color: 'var(--muted)' }}><Mail size={8}/>Email</p>
+                    {lead.email ? <a href={`mailto:${lead.email}`} onClick={e => e.stopPropagation()} className="text-[10px] font-semibold hover:underline block truncate" style={{ color: 'var(--primary)' }}>{lead.email}</a>
+                      : <p className="text-[10px]" style={{ color: 'var(--muted)' }}>—</p>}
+                  </div>
+                  <div className="rounded-xl p-2.5" style={{ background: 'var(--card)' }}>
+                    <p className="text-[9px] font-bold uppercase mb-1 flex items-center gap-1" style={{ color: 'var(--muted)' }}><Globe size={8}/>Website</p>
+                    {lead.website ? <a href={lead.website} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-[10px] font-semibold hover:underline block truncate" style={{ color: 'var(--primary)' }}>{lead.website.replace(/^https?:\/\/(www\.)?/, '')}</a>
+                      : <p className="text-[10px]" style={{ color: 'var(--muted)' }}>—</p>}
+                  </div>
+                  <div className="rounded-xl p-2.5" style={{ background: 'var(--card)' }}>
+                    <p className="text-[9px] font-bold uppercase mb-1 flex items-center gap-1" style={{ color: 'var(--muted)' }}><MapPin size={8}/>Location</p>
+                    <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text)' }}>{lead.location || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Prev / Next pagination */}
+          <div className="px-5 py-4 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+              className="text-xs font-bold px-4 py-2 rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+              ← Previous
+            </button>
+            <span className="text-xs font-semibold" style={{ color: 'var(--muted)' }}>Page {page + 1} of {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+              className="text-xs font-bold px-4 py-2 rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+              Next →
+            </button>
+          </div>
         </div>
       )}
 
