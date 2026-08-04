@@ -391,7 +391,7 @@ app.get('/api/social-accounts/oauth/url', async (req, res) => {
   if (p === 'tiktok') {
     const appId = process.env.VITE_TIKTOK_APP_ID || '';
     if (appId) {
-      return res.json({ url: `https://www.tiktok.com/v2/auth/authorize?client_key=${appId}&scope=user.info.basic,video.list&response_type=code&redirect_uri=${encodeURIComponent(redir)}&state=${state}` });
+      return res.json({ url: `https://www.tiktok.com/v2/auth/authorize?client_key=${appId}&scope=user.info.basic,user.info.stats,video.list&response_type=code&redirect_uri=${encodeURIComponent(redir)}&state=${state}` });
     }
     return res.json({ error: 'VITE_TIKTOK_APP_ID not set in Vercel environment variables.' });
   }
@@ -1131,8 +1131,15 @@ app.post('/api/analytics/sync', async (req, res) => {
                 avatar_url:   user.avatar_url   || account.avatar_url,
               }).eq('id', account.id);
             }
+          } else {
+            console.error('TikTok sync failed for account', account.id, ':', d.error?.message || JSON.stringify(d));
+            if (d.error?.code === 'access_token_invalid' || d.error?.code === 'scope_not_authorized' || r.status === 401) {
+              await supabase.from('social_accounts').update({ status: 'expired' }).eq('id', account.id);
+            }
           }
-        } catch (_) {}
+        } catch (e: any) {
+          console.error('TikTok sync exception for account', account.id, ':', e.message || e);
+        }
       }
 
       // ── LinkedIn ─────────────────────────────────────────────────────────
