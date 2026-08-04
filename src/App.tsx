@@ -641,7 +641,7 @@ export default function App() {
 
   // ── DASHBOARD ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
       {announcement && (
         <div className="px-4 py-2 text-center text-xs font-semibold flex items-center justify-center gap-2"
           style={{ background: 'var(--warning-bg)', color: 'var(--warning)', borderBottom: '1px solid rgba(251,191,36,0.3)' }}>
@@ -743,8 +743,8 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <aside className={`${isMobileMenu ? 'fixed inset-0 top-14 z-40 h-[calc(100vh-56px)]' : 'hidden md:sticky md:top-14 md:h-[calc(100vh-56px)]'} md:flex flex-col w-[270px] border-r p-3 gap-0.5 shrink-0 overflow-y-auto self-start`}
+      <div className="flex flex-1 min-h-0">
+        <aside className={`${isMobileMenu ? 'fixed inset-0 top-14 z-40 h-[calc(100vh-56px)]' : 'hidden md:flex md:h-full'} md:flex-col w-[270px] border-r p-3 gap-0.5 shrink-0 overflow-y-auto`}
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
           {nav('dashboard', 'Dashboard', <Home size={17}/>)}
           <p className="text-[11px] font-bold uppercase tracking-wide px-3 pt-5 pb-1" style={{ color: 'var(--muted)' }}>Analytics</p>
