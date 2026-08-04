@@ -25,7 +25,6 @@ import AdsApiConnector from './components/AdsApiConnector';
 import EngagementInbox from './components/EngagementInbox';
 import AuthFlow from './components/AuthFlow';
 import PostComposer from './components/PostComposer';
-import SiteChatbot from './components/SiteChatbot';
 
 // ── API helper with timeout + error handling ────────────────────────────────
 const TIMEOUT_MS = 12000;
@@ -828,8 +827,6 @@ export default function App() {
       />
     )}
 
-    {/* Chatbot */}
-    {user && <SiteChatbot user={user}/>}
     </div>
   );
 }

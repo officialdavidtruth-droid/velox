@@ -21,8 +21,11 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
   const [connecting, setConnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [copied, setCopied] = useState<string|null>(null);
-  const [tab, setTab] = useState<'overview'|'utm'>('overview');
+  const [tab, setTab] = useState<'overview'|'utm'|'site'>('overview');
+  const [siteStats, setSiteStats] = useState<{ pageviews:number; visitors:number; topPages:{path:string;count:number}[]; topReferrers:{source:string;count:number}[] }>({ pageviews:0, visitors:0, topPages:[], topReferrers:[] });
+  const [siteLoading, setSiteLoading] = useState(false);
   const [syncError, setSyncError] = useState('');
+  const [utmError, setUtmError] = useState('');
   const [hasGoogleAccount, setHasGoogleAccount] = useState(false);
   const token = localStorage.getItem('velox_token') || '';
   const h = { 'Content-Type': 'application/json', 'x-session-token': token };
@@ -33,12 +36,27 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
     content: '', term: '', label: ''
   });
 
-  useEffect(() => { loadLinks(); checkGA4(); }, [workspaceId]);
+  useEffect(() => { loadLinks(); checkGA4(); loadSiteStats(); }, [workspaceId]);
+
+  const loadSiteStats = async () => {
+    setSiteLoading(true);
+    try {
+      const r = await fetch(`/api/site-analytics/summary?workspaceId=${workspaceId}&days=30`, { headers: h });
+      const d = await r.json();
+      if (r.ok) setSiteStats(d);
+    } catch { /* silent — non-critical widget */ }
+    setSiteLoading(false);
+  };
 
   const loadLinks = async () => {
-    const r = await fetch(`/api/utm/links?workspaceId=${workspaceId}`, { headers: h });
-    const d = await r.json();
-    setUtmLinks(Array.isArray(d) ? d : []);
+    try {
+      const r = await fetch(`/api/utm/links?workspaceId=${workspaceId}`, { headers: h });
+      const d = await r.json();
+      if (!r.ok) { setUtmError(d.error || 'Failed to load saved UTM links.'); setUtmLinks([]); return; }
+      setUtmLinks(Array.isArray(d) ? d : []);
+    } catch {
+      setUtmError('Network error while loading saved UTM links.');
+    }
   };
 
   const checkGA4 = async () => {
@@ -73,18 +91,34 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
   };
 
   const saveLink = async () => {
-    if (!utmUrl || !utm.campaign) return;
-    await fetch('/api/utm/save', {
-      method:'POST', headers:h,
-      body:JSON.stringify({ workspace_id:workspaceId, label:utm.label||utm.campaign, original_url:utm.base_url, utm_url:utmUrl, source:utm.source, medium:utm.medium, campaign:utm.campaign })
-    });
-    setUtm(u => ({ ...u, label:'', campaign:'', content:'', term:'' }));
-    loadLinks();
+    setUtmError('');
+    if (!utm.base_url) { setUtmError('Enter a destination URL before saving.'); return; }
+    if (!utm.campaign) { setUtmError('Enter a campaign name before saving.'); return; }
+    if (!utmUrl) { setUtmError('Could not build a valid URL — check the destination URL.'); return; }
+    try {
+      const r = await fetch('/api/utm/save', {
+        method:'POST', headers:h,
+        body:JSON.stringify({ workspace_id:workspaceId, label:utm.label||utm.campaign, original_url:utm.base_url, utm_url:utmUrl, source:utm.source, medium:utm.medium, campaign:utm.campaign })
+      });
+      const d = await r.json();
+      if (!r.ok) { setUtmError(d.error || 'Failed to save UTM link.'); return; }
+      setUtm(u => ({ ...u, label:'', campaign:'', content:'', term:'' }));
+      loadLinks();
+    } catch {
+      setUtmError('Network error while saving the UTM link.');
+    }
   };
 
   const deleteLink = async (id: string) => {
-    await fetch(`/api/utm/links/${id}`, { method:'DELETE', headers:h });
-    loadLinks();
+    setUtmError('');
+    try {
+      const r = await fetch(`/api/utm/links/${id}`, { method:'DELETE', headers:h });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setUtmError(d.error || 'Failed to delete UTM link.'); return; }
+      loadLinks();
+    } catch {
+      setUtmError('Network error while deleting the UTM link.');
+    }
   };
 
   const connectGA4 = async () => {
@@ -161,11 +195,11 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background:'var(--surface)' }}>
-        {(['overview','utm'] as const).map(t => (
+        {(['overview','site','utm'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className="text-xs font-semibold px-4 py-2 rounded-lg capitalize transition-all"
             style={tab===t ? { background:'var(--card)', color:'var(--text)' } : { color:'var(--muted)' }}>
-            {t === 'overview' ? '📊 Analytics Overview' : '🔗 UTM Builder'}
+            {t === 'overview' ? '📊 GA4 Overview' : t === 'site' ? '🌐 Site Analytics' : '🔗 UTM Builder'}
           </button>
         ))}
       </div>
@@ -293,8 +327,101 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
           {!ga4Connected && (
             <div className="glow-card rounded-2xl p-8 text-center">
               <Globe size={28} className="mx-auto mb-3" style={{ color:'var(--muted)' }}/>
-              <p className="font-bold text-sm mb-2" style={{ color:'var(--text)' }}>No website analytics connected</p>
-              <p className="text-xs" style={{ color:'var(--muted)' }}>Connect GA4 above, or use the UTM Builder tab to track campaign traffic</p>
+              <p className="font-bold text-sm mb-2" style={{ color:'var(--text)' }}>No GA4 connected</p>
+              <p className="text-xs" style={{ color:'var(--muted)' }}>
+                Don't want to set up GA4? Use the <button onClick={() => setTab('site')} className="underline font-semibold" style={{ color:'var(--primary)' }}>Site Analytics</button> tab instead — no Google account required.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'site' && (
+        <div className="space-y-5">
+
+          {/* Install snippet */}
+          <div className="glow-card rounded-2xl p-5">
+            <h3 className="text-sm font-bold mb-1" style={{ color:'var(--text)' }}>Install the tracking snippet</h3>
+            <p className="text-xs mb-4 leading-relaxed" style={{ color:'var(--muted)' }}>
+              No Google Analytics account needed. Paste this one line into your website's <code>&lt;head&gt;</code> — Velox Space
+              will start counting pageviews and visitors directly, without going through GA4.
+            </p>
+            <div className="rounded-xl p-3 flex items-start justify-between gap-3" style={{ background:'var(--surface)', border:'1px solid var(--border)' }}>
+              <code className="text-[11px] font-mono break-all" style={{ color:'var(--text)' }}>
+                {`<script async src="https://veloxspace.online/tracker.js" data-site="${workspaceId}"></script>`}
+              </code>
+              <button onClick={() => copyUrl(`<script async src="https://veloxspace.online/tracker.js" data-site="${workspaceId}"></script>`)}
+                className="p-1.5 rounded-lg shrink-0" style={{ background:'var(--primary-soft)', color:'var(--primary)' }}>
+                {copied === `<script async src="https://veloxspace.online/tracker.js" data-site="${workspaceId}"></script>` ? <Check size={12}/> : <Copy size={12}/>}
+              </button>
+            </div>
+            <p className="text-[10px] mt-2" style={{ color:'var(--muted)' }}>
+              Data starts appearing here within a few minutes of your first visitor after the snippet goes live.
+            </p>
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="glow-card rounded-2xl p-4">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background:'var(--primary-soft)', color:'var(--primary)' }}>
+                <MousePointer size={14}/>
+              </div>
+              <p className="text-xl font-black font-mono" style={{ color:'var(--primary)' }}>{fmt(siteStats.pageviews)}</p>
+              <p className="text-[10px] font-semibold mt-0.5" style={{ color:'var(--muted)' }}>Pageviews (30d)</p>
+            </div>
+            <div className="glow-card rounded-2xl p-4">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-2" style={{ background:'var(--info-bg)', color:'var(--info)' }}>
+                <Users size={14}/>
+              </div>
+              <p className="text-xl font-black font-mono" style={{ color:'var(--info)' }}>{fmt(siteStats.visitors)}</p>
+              <p className="text-[10px] font-semibold mt-0.5" style={{ color:'var(--muted)' }}>Unique visitors (30d)</p>
+            </div>
+          </div>
+
+          {siteLoading && (
+            <div className="glow-card rounded-2xl p-8 text-center">
+              <RefreshCw size={20} className="mx-auto mb-2 animate-spin" style={{ color:'var(--muted)' }}/>
+              <p className="text-xs" style={{ color:'var(--muted)' }}>Loading site analytics…</p>
+            </div>
+          )}
+
+          {!siteLoading && siteStats.pageviews === 0 && (
+            <div className="glow-card rounded-2xl p-8 text-center">
+              <Globe size={28} className="mx-auto mb-3" style={{ color:'var(--muted)' }}/>
+              <p className="font-bold text-sm mb-2" style={{ color:'var(--text)' }}>No pageviews yet</p>
+              <p className="text-xs" style={{ color:'var(--muted)' }}>Install the snippet above on your site to start collecting data.</p>
+            </div>
+          )}
+
+          {!siteLoading && siteStats.topPages.length > 0 && (
+            <div className="glow-card rounded-2xl overflow-hidden">
+              <div className="px-5 py-4" style={{ borderBottom:'1px solid var(--border)' }}>
+                <h3 className="text-sm font-bold" style={{ color:'var(--text)' }}>Top Pages</h3>
+              </div>
+              <div className="divide-y" style={{ borderColor:'var(--border)' }}>
+                {siteStats.topPages.map(p => (
+                  <div key={p.path} className="px-5 py-2.5 flex items-center justify-between gap-3">
+                    <span className="text-xs font-mono truncate" style={{ color:'var(--text)' }}>{p.path}</span>
+                    <span className="text-xs font-bold shrink-0" style={{ color:'var(--primary)' }}>{fmt(p.count)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!siteLoading && siteStats.topReferrers.length > 0 && (
+            <div className="glow-card rounded-2xl overflow-hidden">
+              <div className="px-5 py-4" style={{ borderBottom:'1px solid var(--border)' }}>
+                <h3 className="text-sm font-bold" style={{ color:'var(--text)' }}>Top Referrers</h3>
+              </div>
+              <div className="divide-y" style={{ borderColor:'var(--border)' }}>
+                {siteStats.topReferrers.map(r => (
+                  <div key={r.source} className="px-5 py-2.5 flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold truncate" style={{ color:'var(--text)' }}>{r.source}</span>
+                    <span className="text-xs font-bold shrink-0" style={{ color:'var(--primary)' }}>{fmt(r.count)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -309,6 +436,14 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
             <p className="text-xs mb-4" style={{ color:'var(--muted)' }}>
               Build tagged URLs for your campaigns to track traffic sources in Google Analytics
             </p>
+
+            {utmError && (
+              <div className="mb-4 rounded-xl p-3 flex items-start gap-2"
+                style={{ background:'var(--warning-bg)', border:'1px solid rgba(245,158,11,0.3)' }}>
+                <span className="text-sm shrink-0">⚠️</span>
+                <p className="text-xs leading-relaxed" style={{ color:'var(--warning)' }}>{utmError}</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="text-[10px] font-bold uppercase tracking-wider mb-1 block" style={{ color:'var(--muted)' }}>
@@ -370,8 +505,8 @@ export default function WebsiteAnalytics({ workspaceId }: WebsiteAnalyticsProps)
                     {copied === utmUrl ? <Check size={11}/> : <Copy size={11}/>}
                     {copied === utmUrl ? 'Copied!' : 'Copy URL'}
                   </button>
-                  <button onClick={saveLink} disabled={!utm.campaign}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold text-white gradient-primary disabled:opacity-50">
+                  <button onClick={saveLink}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold text-white gradient-primary">
                     <Plus size={11}/> Save Link
                   </button>
                 </div>

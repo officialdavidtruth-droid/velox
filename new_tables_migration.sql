@@ -18,6 +18,17 @@ create table if not exists public.campaigns (
   created_at   timestamptz default now()
 );
 
+create table if not exists public.site_pageviews (
+  id           uuid default gen_random_uuid() primary key,
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  path         text default '/',
+  referrer     text default '',
+  visitor_id   text default '',
+  user_agent   text default '',
+  created_at   timestamptz default now()
+);
+create index if not exists idx_pageviews_workspace on public.site_pageviews(workspace_id, created_at);
+
 create table if not exists public.utm_links (
   id           uuid default gen_random_uuid() primary key,
   workspace_id uuid not null references public.workspaces(id) on delete cascade,

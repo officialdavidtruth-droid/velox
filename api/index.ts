@@ -2156,16 +2156,87 @@ app.delete('/api/crm/tasks/:id', async (req, res) => {
 app.get('/api/utm/links', async (req, res) => {
   const { workspaceId } = req.query;
   if (!workspaceId) return res.json([]);
-  const { data } = await supabase.from('utm_links').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await supabase.from('utm_links').select('*').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(50);
+  if (error) { console.error('utm/links GET error:', error); return res.status(500).json({ error: error.message }); }
   res.json(data || []);
 });
 app.post('/api/utm/save', async (req, res) => {
-  const { data } = await supabase.from('utm_links').insert(req.body).select().single();
+  const { workspace_id, utm_url, campaign } = req.body || {};
+  if (!workspace_id || !utm_url || !campaign) {
+    return res.status(400).json({ error: 'workspace_id, utm_url, and campaign are required' });
+  }
+  const { data, error } = await supabase.from('utm_links').insert(req.body).select().single();
+  if (error) { console.error('utm/save error:', error); return res.status(500).json({ error: error.message }); }
   res.status(201).json(data);
 });
 app.delete('/api/utm/links/:id', async (req, res) => {
-  await supabase.from('utm_links').delete().eq('id', req.params.id);
+  const { error } = await supabase.from('utm_links').delete().eq('id', req.params.id);
+  if (error) { console.error('utm/links DELETE error:', error); return res.status(500).json({ error: error.message }); }
   res.json({ success: true });
+});
+
+// ── Site Analytics (no GA4 required) ───────────────────────────────────────────
+// Public beacon endpoint — called from the customer's own website via tracker.js.
+// No auth: this is hit by anonymous visitors on third-party sites.
+app.options('/api/track/pv', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.sendStatus(204);
+});
+app.post('/api/track/pv', async (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  try {
+    const { workspaceId, path, referrer, visitorId } = req.body || {};
+    if (!workspaceId) return res.status(400).json({ error: 'workspaceId required' });
+    await supabase.from('site_pageviews').insert({
+      workspace_id: workspaceId,
+      path: String(path || '/').slice(0, 500),
+      referrer: String(referrer || '').slice(0, 500),
+      visitor_id: String(visitorId || '').slice(0, 100),
+      user_agent: String(req.headers['user-agent'] || '').slice(0, 300),
+    });
+  } catch (e) {
+    console.error('track/pv error:', e);
+    // best-effort beacon — never fail loudly to the visitor's browser
+  }
+  res.status(204).end();
+});
+
+// Authenticated summary for the dashboard
+app.get('/api/site-analytics/summary', async (req, res) => {
+  const { workspaceId, days } = req.query;
+  if (!workspaceId) return res.json({ pageviews: 0, visitors: 0, topPages: [], topReferrers: [] });
+  const since = new Date(Date.now() - (parseInt(days as string, 10) || 30) * 86400000).toISOString();
+  const { data, error } = await supabase
+    .from('site_pageviews')
+    .select('path,referrer,visitor_id,created_at')
+    .eq('workspace_id', workspaceId)
+    .gte('created_at', since)
+    .limit(20000);
+  if (error) { console.error('site-analytics/summary error:', error); return res.status(500).json({ error: error.message }); }
+
+  const rows = data || [];
+  const pageviews = rows.length;
+  const visitors = new Set(rows.map((r: any) => r.visitor_id).filter(Boolean)).size;
+
+  const pageCounts: Record<string, number> = {};
+  const refCounts: Record<string, number> = {};
+  rows.forEach((r: any) => {
+    pageCounts[r.path] = (pageCounts[r.path] || 0) + 1;
+    let ref = 'Direct';
+    if (r.referrer) {
+      try { ref = new URL(r.referrer).hostname.replace(/^www\./, ''); } catch { ref = 'Direct'; }
+    }
+    refCounts[ref] = (refCounts[ref] || 0) + 1;
+  });
+
+  const topPages = Object.entries(pageCounts).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([path, count]) => ({ path, count }));
+  const topReferrers = Object.entries(refCounts).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([source, count]) => ({ source, count }));
+
+  res.json({ pageviews, visitors, topPages, topReferrers });
 });
 
 // ── Website Analytics (GA4) ───────────────────────────────────────────────────
