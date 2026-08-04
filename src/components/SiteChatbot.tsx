@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, RefreshCw, AlertCircle } from 'lucide-react';
+import { MessageCircle, X, Send, RefreshCw, ChevronUp } from 'lucide-react';
 
 interface SiteChatbotProps { user: any; }
 
+// widget lifecycle:
+//  'bubble'    - default floating launcher, polls for new messages
+//  'open'      - chat panel expanded, polls for new messages
+//  'minimized' - user hit cancel: docked as a slim tab in the corner, polling stopped
+type WidgetState = 'bubble' | 'open' | 'minimized';
+
 export default function SiteChatbot({ user }: SiteChatbotProps) {
-  const [open, setOpen] = useState(false);
+  const [widgetState, setWidgetState] = useState<WidgetState>('bubble');
   const [messages, setMessages] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -15,13 +21,17 @@ export default function SiteChatbot({ user }: SiteChatbotProps) {
   const token = () => localStorage.getItem('velox_token') || '';
   const h = () => ({ 'Content-Type': 'application/json', 'x-session-token': token() });
 
+  const open = widgetState === 'open';
+
   useEffect(() => { if (user) initSession(); }, [user]);
 
+  // Pause polling entirely while minimized so the dismissed widget has zero
+  // ongoing network/CPU footprint until the user brings it back.
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || widgetState === 'minimized') return;
     const interval = setInterval(() => loadMessages(sessionId), 5000);
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [sessionId, widgetState]);
 
   useEffect(() => {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,7 +52,7 @@ export default function SiteChatbot({ user }: SiteChatbotProps) {
       const d = await r.json();
       if (Array.isArray(d)) {
         setMessages(d);
-        if (!open) setUnread(d.filter((m: any) => m.sender === 'admin' && !m.read_by_user).length);
+        if (widgetState !== 'open') setUnread(d.filter((m: any) => m.sender === 'admin' && !m.read_by_user).length);
       }
     } catch {}
   };
@@ -70,30 +80,62 @@ export default function SiteChatbot({ user }: SiteChatbotProps) {
   };
 
   const openChat = () => {
-    setOpen(true); setUnread(0);
+    setWidgetState('open'); setUnread(0);
     if (sessionId) fetch('/api/chat/mark-read', { method: 'POST', headers: h(), body: JSON.stringify({ sessionId, reader: 'user' }) }).catch(() => {});
   };
 
+  // Cancel: dismiss the widget off to the side so it stops polling and stays
+  // out of the way, without losing the conversation.
+  const minimize = () => setWidgetState('minimized');
+
   if (!user) return null;
+
+  // Docked corner tab — minimal footprint, no network activity while here.
+  if (widgetState === 'minimized') {
+    return (
+      <button onClick={() => setWidgetState('bubble')}
+        className="fixed bottom-6 left-0 z-40 flex items-center gap-1.5 pl-3 pr-2.5 py-2.5 rounded-r-full shadow-2xl text-white gradient-primary transition-transform hover:pl-4 cursor-pointer"
+        style={{ boxShadow: '0 4px 24px rgba(0,194,212,0.35)' }}
+        title="Reopen support chat">
+        <MessageCircle size={16}/>
+        <ChevronUp size={12} className="rotate-90"/>
+        {unread > 0 && <span className="w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center" style={{ background: 'var(--danger)', color: '#fff' }}>{unread}</span>}
+      </button>
+    );
+  }
 
   return (
     <>
-      <button onClick={openChat}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white gradient-primary transition-transform hover:scale-110 cursor-pointer"
-        style={{ boxShadow: '0 4px 24px rgba(0,194,212,0.4)' }}>
-        <MessageCircle size={22}/>
-        {unread > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center" style={{ background: 'var(--danger)', color: '#fff' }}>{unread}</span>}
-      </button>
+      {widgetState === 'bubble' && (
+        <div className="fixed bottom-6 left-6 z-40 flex items-end gap-1.5">
+          <button onClick={openChat}
+            className="w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white gradient-primary transition-transform hover:scale-110 cursor-pointer relative"
+            style={{ boxShadow: '0 4px 24px rgba(0,194,212,0.4)' }}>
+            <MessageCircle size={22}/>
+            {unread > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center" style={{ background: 'var(--danger)', color: '#fff' }}>{unread}</span>}
+          </button>
+          <button onClick={minimize}
+            className="w-5 h-5 rounded-full flex items-center justify-center border shadow-md cursor-pointer"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--muted)' }}
+            title="Dismiss chat widget">
+            <X size={11}/>
+          </button>
+        </div>
+      )}
 
       {open && (
-        <div className="fixed bottom-24 right-6 z-40 w-80 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        <div className="fixed bottom-24 left-6 z-40 w-80 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
           style={{ background: 'var(--card)', border: '1px solid var(--border)', height: 420 }}>
           <div className="px-4 py-3 flex items-center justify-between gradient-primary shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center"><MessageCircle size={14} className="text-white"/></div>
               <div><p className="text-xs font-bold text-white">Velox Space Support</p><p className="text-[9px] text-white/70">Typically replies in minutes</p></div>
             </div>
-            <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white cursor-pointer"><X size={16}/></button>
+            <div className="flex items-center gap-2">
+              <button onClick={minimize} className="text-white/80 hover:text-white cursor-pointer" title="Cancel — dock to corner">
+                <X size={16}/>
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {initError && <div className="text-[10px] p-2 rounded-lg" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>{initError}</div>}

@@ -26,7 +26,6 @@ import EngagementInbox from './components/EngagementInbox';
 import AuthFlow from './components/AuthFlow';
 import PostComposer from './components/PostComposer';
 import SiteChatbot from './components/SiteChatbot';
-import TermsAndPrivacy from './components/TermsAndPrivacy';
 
 // ── API helper with timeout + error handling ────────────────────────────────
 const TIMEOUT_MS = 12000;
@@ -125,7 +124,6 @@ export default function App() {
   const [isNewWsModal, setIsNewWsModal] = useState(false);
   const [wsDropOpen,   setWsDropOpen]   = useState(false);
   const [profileDropOpen, setProfileDropOpen] = useState(false);
-  const [legalModal, setLegalModal] = useState<'terms'|'privacy'|null>(null);
   const [showComposer, setShowComposer] = useState(false);
   const [livePricing, setLivePricing] = useState<any>({
     starter: { monthly: 15000, annual: 13500  },
@@ -832,19 +830,6 @@ export default function App() {
 
     {/* Chatbot */}
     {user && <SiteChatbot user={user}/>}
-
-    {/* Legal modals */}
-    {legalModal && <TermsAndPrivacy type={legalModal} onClose={() => setLegalModal(null)}/>}
-
-    {/* Footer (in logged-in app) */}
-    {user && (
-      <footer className="text-center py-3 text-[10px]" style={{ color:'var(--muted)', borderTop:'1px solid var(--border)' }}>
-        © {new Date().getFullYear()} Velox Space &nbsp;·&nbsp;
-        <button onClick={() => setLegalModal('terms')} className="hover:underline" style={{ color:'var(--primary)' }}>Terms</button>
-        &nbsp;·&nbsp;
-        <button onClick={() => setLegalModal('privacy')} className="hover:underline" style={{ color:'var(--primary)' }}>Privacy</button>
-      </footer>
-    )}
     </div>
   );
 }
