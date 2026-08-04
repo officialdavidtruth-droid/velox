@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Velox Space">
+    <meta name="theme-color" content="#6366f1">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicons/icon-16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicons/icon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicons/apple-touch-icon.png">
+    <title>Velox Space — Social & Ads Analytics Command Center for Marketing Agencies</title>
+    <meta name="description" content="Velox Space is a social media and digital marketing analytics platform for agencies. Connect your Meta, Google, and TikTok accounts to unify ad performance, social analytics, content scheduling, and AI-powered lead generation in one dashboard.">
+    <link rel="canonical" href="https://veloxspace.online/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Velox Space — Social & Ads Analytics Command Center">
+    <meta property="og:description" content="Unify social analytics, ad campaigns, content scheduling, and AI-powered lead generation for your marketing agency.">
+    <meta property="og:url" content="https://veloxspace.online/">
+    <meta property="og:site_name" content="Velox Space">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="manifest" href="/manifest.json">
+  </head>
+  <body>
+    <div id="root" style="min-height:100vh;background:#060D1A;"></div>
+    <noscript>
+      <div style="font-family:Inter,sans-serif;color:#EEF4FF;background:#060D1A;">
+        <header style="background:#070A16;border-bottom:1px solid rgba(255,255,255,0.1);padding:16px 24px;display:flex;align-items:center;gap:10px;">
+          <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#007A8A,#00C2D4);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:14px;">V</div>
+          <span style="color:#EEF4FF;font-weight:900;font-size:14px;">Velox Space</span>
+        </header>
+        <main style="max-width:760px;margin:0 auto;padding:48px 24px;">
+          <h1 style="font-size:32px;font-weight:900;line-height:1.2;margin:0 0 16px;">Velox Space — Social &amp; Ads Analytics Command Center for Marketing Agencies</h1>
+          <p style="font-size:15px;line-height:1.6;color:#A9B8CC;margin:0 0 16px;">
+            Velox Space is a social media and digital marketing analytics platform built for agencies and marketing teams.
+            It connects to your Meta, Google, and TikTok accounts to unify social analytics, ad campaign performance,
+            content scheduling, AI-generated captions, and lead generation in a single dashboard.
+          </p>
+          <h2 style="font-size:16px;font-weight:800;margin:32px 0 8px;">Why Velox Space requests account access</h2>
+          <p style="font-size:14px;line-height:1.6;color:#A9B8CC;margin:0 0 8px;">
+            <strong>Meta (Facebook &amp; Instagram):</strong> we read Page insights, posts, and ad account performance to
+            display analytics in your dashboard. We never post or spend on your behalf without you initiating it in-app.
+          </p>
+          <p style="font-size:14px;line-height:1.6;color:#A9B8CC;margin:0 0 24px;">
+            <strong>Google (Analytics / GA4):</strong> we read your website traffic and conversion data
+            (analytics.readonly scope) to power the Website Analytics view.
+          </p>
+          <p style="font-size:13px;color:#A9B8CC;">
+            Read our <a href="/privacy" style="color:#00C2D4;">Privacy Policy</a> and
+            <a href="/terms" style="color:#00C2D4;">Terms &amp; Conditions</a>.
+          </p>
+        </main>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+      }
+    </script>
+  </body>
+</html>
