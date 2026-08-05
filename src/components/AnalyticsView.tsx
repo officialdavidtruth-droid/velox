@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { RefreshCw, TrendingUp, TrendingDown, Users, Eye, Heart, MousePointer, Zap, Calendar, ChevronDown, ArrowUpRight, BarChart3 } from 'lucide-react';
+import { FaInstagram, FaFacebook, FaXTwitter, FaLinkedin, FaTiktok, FaYoutube } from 'react-icons/fa6';
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell } from 'recharts';
 
 interface Props {
@@ -13,10 +14,20 @@ const PLATFORM_COLORS: Record<string, string> = {
   instagram:'#e1306c', facebook:'#1877f2', twitter:'#000',
   linkedin:'#0a66c2', tiktok:'#fe2c55', youtube:'#ff0000',
 };
-const PLATFORM_EMOJI: Record<string, string> = {
-  instagram:'📸', facebook:'👥', twitter:'🐦',
-  linkedin:'💼', tiktok:'🎵', youtube:'▶️',
+const PLATFORM_ICONS: Record<string, React.ComponentType<{ size?: number; style?: React.CSSProperties }>> = {
+  instagram: FaInstagram, facebook: FaFacebook, twitter: FaXTwitter,
+  linkedin: FaLinkedin, tiktok: FaTiktok, youtube: FaYoutube,
 };
+// Platforms that represent real social channels with follower/engagement metrics.
+// "google" and "meta_ads" are connection helpers (YouTube access, Ads data) that
+// also live in social_accounts/analytics for OAuth reasons, but aren't social
+// channels themselves — they're tracked in Website Analytics / ROAS views instead.
+const SOCIAL_PLATFORMS = ['instagram', 'facebook', 'twitter', 'linkedin', 'tiktok', 'youtube'];
+function PlatformIcon({ platform, size = 14 }: { platform: string; size?: number }) {
+  const Icon = PLATFORM_ICONS[platform];
+  if (!Icon) return null;
+  return <Icon size={size} style={{ color: PLATFORM_COLORS[platform] || 'currentColor' }} />;
+}
 // What each platform actually calls its "audience" metric —
 // Meta apps (Instagram/Facebook) and TikTok/X use Followers,
 // LinkedIn uses Connections, YouTube uses Subscribers.
@@ -46,11 +57,16 @@ const DATE_RANGES = [
   { label:'Last 90 days', days:90 },
 ];
 
-export default function AnalyticsView({ workspaceId, analytics, history, onRefresh }: Props) {
+export default function AnalyticsView({ workspaceId, analytics: rawAnalytics, history: rawHistory, onRefresh }: Props) {
+  // Only show genuine social channels here — "google" and "meta_ads" rows exist
+  // for OAuth/Ads-connection reasons but belong in Website Analytics / ROAS views.
+  const analytics = useMemo(() => rawAnalytics.filter(a => SOCIAL_PLATFORMS.includes(a.platform)), [rawAnalytics]);
+  const history = useMemo(() => rawHistory.filter(h => SOCIAL_PLATFORMS.includes(h.platform)), [rawHistory]);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [dateRange, setDateRange]               = useState(30);
   const [syncing, setSyncing]                   = useState(false);
   const [syncMsg, setSyncMsg]                   = useState('');
+  const [reconciling, setReconciling]            = useState(false);
   const [activeMetric, setActiveMetric]         = useState<'followers'|'reach'|'impressions'|'engagement'>('followers');
   const [accounts, setAccounts]                 = useState<any[]>([]);
   const token = localStorage.getItem('velox_token') || '';
@@ -78,6 +94,22 @@ export default function AnalyticsView({ workspaceId, analytics, history, onRefre
       if (d.synced > 0) onRefresh();
     } catch { setSyncMsg('Sync failed — check your connection.'); }
     setSyncing(false);
+    setTimeout(() => setSyncMsg(''), 5000);
+  };
+
+  const handleReconcile = async () => {
+    setReconciling(true); setSyncMsg('');
+    try {
+      const r = await fetch('/api/analytics/reconcile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+        body: JSON.stringify({ workspaceId }),
+      });
+      const d = await r.json();
+      setSyncMsg(d.removed > 0 ? `✓ Removed ${d.removed} disconnected platform${d.removed!==1?'s':''}` : 'Everything is already in sync — nothing to remove.');
+      onRefresh();
+    } catch { setSyncMsg('Refresh failed — check your connection.'); }
+    setReconciling(false);
     setTimeout(() => setSyncMsg(''), 5000);
   };
 
@@ -169,12 +201,19 @@ export default function AnalyticsView({ workspaceId, analytics, history, onRefre
             {analytics.map(a => (
               <button key={a.platform} onClick={() => setSelectedPlatform(a.platform)}
                 title={a.platform}
-                className="text-xs px-2 py-1.5 rounded-lg transition-all cursor-pointer"
+                className="text-xs px-2 py-1.5 rounded-lg transition-all cursor-pointer flex items-center"
                 style={selectedPlatform===a.platform ? {background:'var(--card)',color:'var(--text)'} : {color:'var(--muted)'}}>
-                {PLATFORM_EMOJI[a.platform] || a.platform}
+                <PlatformIcon platform={a.platform} size={14}/>
               </button>
             ))}
           </div>
+          <button onClick={handleReconcile} disabled={reconciling}
+            title="Rescan connected accounts and remove any leftover disconnected platforms"
+            className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl font-semibold transition-all disabled:opacity-60 cursor-pointer border"
+            style={{ borderColor:'var(--border)', color:'var(--text)', background:'var(--surface)' }}>
+            <RefreshCw size={12} className={reconciling?'animate-spin':''}/>
+            {reconciling ? 'Refreshing…' : 'Refresh'}
+          </button>
           <button onClick={handleSync} disabled={syncing}
             className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-xl font-semibold text-white transition-all disabled:opacity-60 cursor-pointer"
             style={{ background:'var(--primary)' }}>
@@ -348,7 +387,7 @@ export default function AnalyticsView({ workspaceId, analytics, history, onRefre
                           onClick={() => setSelectedPlatform(a.platform===selectedPlatform?'all':a.platform)}
                           style={{ borderBottom:'1px solid var(--border)', background: selectedPlatform===a.platform ? 'var(--primary-soft)' : 'transparent' }}>
                           <td className="px-4 py-3 font-semibold flex items-center gap-2" style={{ color:'var(--text)' }}>
-                            <span style={{ color:PLATFORM_COLORS[a.platform]||'#888' }}>{PLATFORM_EMOJI[a.platform]||'📱'}</span>
+                            <PlatformIcon platform={a.platform} size={14}/>
                             <span className="capitalize">{a.platform}</span>
                           </td>
                           <td className="px-4 py-3 font-mono font-bold" style={{ color:PLATFORM_COLORS[a.platform]||'var(--text)' }}>

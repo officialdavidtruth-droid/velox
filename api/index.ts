@@ -422,6 +422,37 @@ app.post('/api/social-accounts/reconnect', async (req, res) => {
   res.json({ success: true });
 });
 
+// Removes analytics/analytics_history rows that no longer have a matching
+// connected social_accounts row — cleans up drift from accounts disconnected
+// before cascade-delete existed, or removed directly in the database.
+app.post('/api/analytics/reconcile', async (req, res) => {
+  const { workspaceId } = req.body;
+  if (!workspaceId) return res.status(400).json({ error: 'workspaceId required' });
+
+  const { data: accounts, error: accountsError } = await supabase
+    .from('social_accounts').select('platform').eq('workspace_id', workspaceId);
+  if (accountsError) { console.error('reconcile accounts fetch error:', accountsError); return res.status(500).json({ error: accountsError.message }); }
+
+  const connectedPlatforms = (accounts || []).map((a: any) => a.platform);
+
+  const { data: existingAnalytics, error: analyticsFetchError } = await supabase
+    .from('analytics').select('platform').eq('workspace_id', workspaceId);
+  if (analyticsFetchError) { console.error('reconcile analytics fetch error:', analyticsFetchError); return res.status(500).json({ error: analyticsFetchError.message }); }
+
+  const orphanedPlatforms = (existingAnalytics || [])
+    .map((a: any) => a.platform)
+    .filter((p: string) => !connectedPlatforms.includes(p));
+
+  let removed = 0;
+  for (const platform of orphanedPlatforms) {
+    await supabase.from('analytics').delete().eq('workspace_id', workspaceId).eq('platform', platform);
+    await supabase.from('analytics_history').delete().eq('workspace_id', workspaceId).eq('platform', platform);
+    removed++;
+  }
+
+  res.json({ success: true, removed, orphanedPlatforms });
+});
+
 app.post('/api/social-accounts/disconnect', async (req, res) => {
   const { accountId } = req.body;
   if (!accountId) return res.status(400).json({ error: 'accountId required' });
