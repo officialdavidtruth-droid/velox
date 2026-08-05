@@ -424,7 +424,25 @@ app.post('/api/social-accounts/reconnect', async (req, res) => {
 
 app.post('/api/social-accounts/disconnect', async (req, res) => {
   const { accountId } = req.body;
-  await supabase.from('social_accounts').delete().eq('id', accountId);
+  if (!accountId) return res.status(400).json({ error: 'accountId required' });
+
+  const { data: account, error: fetchError } = await supabase
+    .from('social_accounts').select('workspace_id, platform').eq('id', accountId).single();
+  if (fetchError || !account) return res.status(404).json({ error: 'Account not found' });
+
+  const { error: deleteError } = await supabase.from('social_accounts').delete().eq('id', accountId);
+  if (deleteError) { console.error('social-accounts disconnect error:', deleteError); return res.status(500).json({ error: deleteError.message }); }
+
+  // Cascade — remove analytics tied to this workspace+platform so disconnected accounts
+  // don't leave stale/orphaned data behind in the dashboard.
+  const { error: analyticsError } = await supabase.from('analytics')
+    .delete().eq('workspace_id', account.workspace_id).eq('platform', account.platform);
+  if (analyticsError) console.error('analytics cascade delete error:', analyticsError);
+
+  const { error: historyError } = await supabase.from('analytics_history')
+    .delete().eq('workspace_id', account.workspace_id).eq('platform', account.platform);
+  if (historyError) console.error('analytics_history cascade delete error:', historyError);
+
   res.json({ success: true });
 });
 
