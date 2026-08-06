@@ -12,6 +12,9 @@ async function start() {
     const { default: express } = await import('express');
     const exp = express();
     exp.use(express.static(path.join(process.cwd(), 'dist')));
+    exp.get(['/terms', '/privacy', '/legal'], (req: any, res: any) =>
+      res.sendFile(path.join(process.cwd(), 'dist', `${req.path.slice(1)}.html`))
+    );
     exp.get('*', (_req: any, res: any) => res.sendFile(path.join(process.cwd(), 'dist', 'index.html')));
     app.use(exp);
   }

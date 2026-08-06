@@ -26,10 +26,6 @@ if (path === '/supaadmin') {
         </div>
       </div>`;
   });
-} else if (path === '/terms' || path === '/privacy' || path === '/legal') {
-  import('./components/LegalPage').then(({ default: LegalPage }) => {
-    root.render(<StrictMode><LegalPage type={path.slice(1) as 'terms' | 'privacy' | 'legal'} /></StrictMode>);
-  });
 } else {
   import('./App').then(({ default: App }) => {
     root.render(

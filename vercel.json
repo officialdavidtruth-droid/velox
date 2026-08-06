@@ -4,6 +4,9 @@
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api/index" },
     { "source": "/oauth-mimic/:path*", "destination": "/api/index" },
+    { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/legal", "destination": "/legal.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
